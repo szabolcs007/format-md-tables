@@ -1150,11 +1150,12 @@ type Opcode = ["equal" | "replace" | "delete" | "insert", number, number, number
  * autojunk=True semantics: elements appearing more than n//100+1 times in a
  * sequence of length n >= 200 are "popular" and excluded from b2j.
  */
-class SequenceMatcher {
+export class SequenceMatcher {
   a: string[];
   b: string[];
   private b2j = new Map<string, number[]>();
   private bjunk = new Set<string>();
+  private bpopular = new Set<string>();
   private matchingBlocks: Array<[number, number, number]> | null = null;
   private opcodes: Opcode[] | null = null;
 
@@ -1165,6 +1166,15 @@ class SequenceMatcher {
   }
 
   private chainB(): void {
+    // Mirrors CPython 3.14.4 difflib.SequenceMatcher.__chain_b:
+    //
+    //   1. Build b2j ignoring junk.
+    //   2. Purge junk elements (bjunk stays empty: this port has no
+    //      isjunk filter).
+    //   3. Purge popular elements into bpopular (not bjunk) and remove
+    //      them from b2j. This keeps the junk-extension loops in
+    //      findLongestMatch behaving correctly — they consult bjunk only;
+    //      with bjunk empty they pass through non-junk elements freely.
     const b = this.b;
     const b2j = new Map<string, number[]>();
     for (let i = 0; i < b.length; i++) {
@@ -1173,15 +1183,15 @@ class SequenceMatcher {
       if (indices === undefined) b2j.set(elt, [i]);
       else indices.push(i);
     }
-    // No isjunk in this port; the junk sets stay empty.
-    // Purge popular elements that are not junk.
+    // No isjunk in this port; the junk set stays empty.
+    // Purge popular elements that are not junk — into bpopular, not bjunk.
     const n = b.length;
     if (n >= 200) {
       const ntest = Math.floor(n / 100) + 1;
       for (const [elt, idxs] of b2j) {
-        if (idxs.length > ntest) this.bjunk.add(elt);
+        if (idxs.length > ntest) this.bpopular.add(elt);
       }
-      for (const elt of this.bjunk) b2j.delete(elt);
+      for (const elt of this.bpopular) b2j.delete(elt);
     }
     this.b2j = b2j;
   }
@@ -1302,7 +1312,9 @@ class SequenceMatcher {
   }
 
   getGroupedOpcodes(n = 3): Opcode[][] {
-    let codes = this.getOpcodes();
+    // Operate on a shallow copy so the memoized opcodes stay pristine
+    // across repeated calls on the same matcher instance.
+    let codes: Opcode[] = this.getOpcodes().slice();
     if (codes.length === 0) codes = [["equal", 0, 1, 0, 1]];
     // Fixup leading and trailing groups if they show no changes.
     if (codes[0]![0] === "equal") {
@@ -1479,6 +1491,8 @@ function fsWriteStderr(text: string): void {
 }
 
 /** Option table mirroring argparse's long options; names are prefix-unique. */
+// argparse only accepts `--name` forms for long options (not `-name`).
+// Short options (e.g., `-h`) are handled separately below.
 const OPTIONS: Record<string, { takesValue: boolean }> = {
   "--max-width": { takesValue: true },
   "--tab-width": { takesValue: true },
@@ -1529,11 +1543,41 @@ function parseArgs(argv: string[]):
     const name = eq === -1 ? arg : arg.slice(0, eq);
     const explicitArg = eq === -1 ? null : arg.slice(eq + 1);
 
-    // Exact match first, then argparse allow_abbrev: an unambiguous prefix
-    // of a long option is accepted, including single-dash long forms.
+    // argparse behavior:
+    // - Long options: `--name` (with optional allow_abbrev prefix matching).
+    // - Short options: single-dash + single character(s). For `-h*`, argparse
+    //   processes `-h` first (help, no value), which prints help and exits
+    //   before consuming the rest.
+    // - Single-dash long forms (`-check`, `-max-width`) are rejected as
+    //   "unrecognized arguments".
+    // - `-h=VALUE` is rejected with "ignored explicit argument".
+
+    // Short options: only `-h` (help) is defined. `-h*` → help, exit 0.
+    // `-h=VALUE` → error (ignored explicit argument).
+    if (name.startsWith("-") && !name.startsWith("--")) {
+      // Single-dash form. Only `-h` (help) is a defined short option.
+      // argparse short-option concatenation: `-hx` fires `-h` first, which
+      // prints help and exits before consuming `x`. But `-h=VALUE` is
+      // rejected because `-h` takes no explicit argument.
+      if (name === "-h" || name.startsWith("-h")) {
+        if (explicitArg !== null) {
+          return {
+            error: usageError(
+              `argument -h/--help: ignored explicit argument '${explicitArg}'`),
+          };
+        }
+        writeText(1, USAGE);
+        return { error: 0 };
+      }
+      // Any other single-dash form → unrecognized.
+      return { error: usageError(`unrecognized arguments: ${arg}`) };
+    }
+
+
+    // Long options: `--name` (allow_abbrev prefix matching).
     let opt: string | null = OPTIONS[name] !== undefined ? name : null;
     if (opt === null) {
-      const prefix = name.replace(/^-+/, "");
+      const prefix = name.slice(2); // strip leading `--`
       const matches = OPTION_NAMES.filter((n) => n.slice(2).startsWith(prefix));
       if (matches.length === 1) {
         opt = matches[0]!;
@@ -1546,6 +1590,7 @@ function parseArgs(argv: string[]):
         return { error: usageError(`unrecognized arguments: ${arg}`) };
       }
     }
+
 
     if (!OPTIONS[opt]!.takesValue) {
       if (explicitArg !== null) {

@@ -138,20 +138,45 @@ describe("cli", () => {
       const r0 = await runCli(["--max-w", "0"], Buffer.from(wide, "utf-8"));
       expect(r0.code).toBe(0);
       expect(r0.stdout.includes("| " + "x".repeat(120) + " |")).toBe(true);
-      // -c and --ch behave like --check
+      // --ch behaves like --check (prefix-unique)
       const p = path.join(tmp, "t.md");
       fs.writeFileSync(p, SRC);
-      const r1 = await runCli(["-c", p]);
-      expect(r1.code).toBe(1);
       const r2 = await runCli(["--ch", p]);
       expect(r2.code).toBe(1);
-      // single-dash long form
+      // single-dash long forms are rejected (argparse parity)
       const r3 = await runCli(["-max-width", "0"], Buffer.from(wide, "utf-8"));
-      expect(r3.code).toBe(0);
+      expect(r3.code).toBe(2);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("single-dash long forms are rejected with exit 2 (argparse parity)", async () => {
+    // argparse only accepts `--name` for long options. `-c`, `-v`, `-d`,
+    // `-max-width` etc. are treated as unknown short-option forms.
+    for (const argv of [["-c"], ["-v"], ["-d"], ["-max-width", "0"], ["-tab-width", "4"]]) {
+      const r = await runCli(argv);
+      expect(r.code).toBe(2);
+    }
+  });
+
+  test("argparse short-option concatenation: -h* prints help and exits 0", async () => {
+    // argparse processes `-hx` as `-h` (help action fires, exits before consuming `x`).
+    const r1 = await runCli(["-hx"]);
+    expect(r1.code).toBe(0);
+    expect(r1.stdout.toString("utf-8").includes("usage:")).toBe(true);
+    // -habc → same behavior
+    const r2 = await runCli(["-habc"]);
+    expect(r2.code).toBe(0);
+  });
+
+  test("argparse rejects -h=VALUE with exit 2 (ignored explicit argument)", async () => {
+    // `-h` takes no explicit argument; `-h=5` is rejected.
+    const r = await runCli(["-h=5"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr.toString("utf-8").includes("ignored explicit argument")).toBe(true);
+  });
+
 
   test("negative-number arguments are treated as files (argparse)", async () => {
     const tmp = tmpdir();
