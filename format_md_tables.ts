@@ -412,3 +412,336 @@ export function tokenize(text: string): Array<["ansi" | "plain", string]> {
   if (pos < text.length) pieces.push(["plain", text.slice(pos)]);
   return pieces;
 }
+
+// ---------------------------------------------------------------------------
+// Python-faithful whitespace helpers
+// ---------------------------------------------------------------------------
+//
+// Python's str.strip()/str.isspace()/re \s use a larger whitespace set than
+// JS String.trim(): they include \u0085, \u001c-\u001f and exclude \ufeff.
+// `WS` holds the literal characters; the regex character class is built as
+// "[" + WS + "]" — the \u2000-\u200a range inside it is a valid class range.
+
+export const WS =
+  "\t\n\v\f\r \u001c\u001d\u001e\u001f\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000";
+const WS_CLASS = "[" + WS + "]";
+const STRIP_RE = new RegExp("^" + WS_CLASS + "+|" + WS_CLASS + "+$", "g");
+const RSTRIP_RE = new RegExp(WS_CLASS + "+$");
+
+/** Python str.strip(): strip leading/trailing whitespace (both sides). */
+export function pyStrip(s: string): string {
+  return s.replace(STRIP_RE, "");
+}
+
+/** Python str.rstrip(): strip trailing whitespace only. */
+export function pyRstrip(s: string): string {
+  return s.replace(RSTRIP_RE, "");
+}
+
+/** Python str.isspace(): true when every code point is whitespace. */
+export function pyIsSpace(s: string): boolean {
+  return s.length > 0 && new RegExp("^" + WS_CLASS + "+$").test(s);
+}
+
+// ---------------------------------------------------------------------------
+// Table parsing
+// ---------------------------------------------------------------------------
+
+export const PREFIX_RE = /^(?<prefix> {0,3}(?:> ?)*)(?<body>.*)$/;
+// Lines starting like this are block-level elements -> they end a table.
+// (`\s` from the Python regex is replaced by the shared whitespace class.)
+export const BLOCK_START_RE = new RegExp(
+  "^(#{1,6}" + WS_CLASS + "|>|[-+*]" + WS_CLASS + "|\\d+[.)]" + WS_CLASS + "|```|~~~|<[a-zA-Z]|<!--)");
+export const HR_RE = new RegExp("^(-{3,}|_{3,}|\\*{3,})" + WS_CLASS + "*$");
+export const FENCE_OPEN_RE = /^ {0,3}(?:> ?)*(`{3,}|~{3,})/;
+export const MATH_OPEN_RE = new RegExp("^ {0,3}\\$\\$" + WS_CLASS + "*$");
+// CommonMark raw HTML block: an opening tag / comment / declaration at the
+// start of a line runs until the first blank line.  Content inside it (even
+// table-shaped lines) must never be touched.
+export const HTML_BLOCK_RE = /^ {0,3}<[a-zA-Z!/?]/;
+
+/**
+ * Split a row body into cells.
+ *
+ * A `|` delimits cells unless it is backslash-escaped (`\|`) or sits inside
+ * an inline code span (`` `a|b` ``).  Matching follows GFM: a code span
+ * opens with a backtick run and closes with a run of the same length.
+ */
+export function splitRow(line: string): string[] {
+  const chars = Array.from(line);
+  const cells: string[] = [];
+  let cur: string[] = [];
+  let i = 0;
+  const n = chars.length;
+  let codeLen = 0;
+  while (i < n) {
+    const c = chars[i]!;
+    if (c === "\\" && i + 1 < n) {
+      cur.push(chars.slice(i, i + 2).join(""));
+      i += 2;
+      continue;
+    }
+    if (c === "`") {
+      let j = i;
+      while (j < n && chars[j] === "`") j++;
+      const run = j - i;
+      if (codeLen === 0) {
+        codeLen = run;
+        cur.push(chars.slice(i, j).join(""));
+      } else if (run === codeLen) {
+        codeLen = 0;
+        cur.push(chars.slice(i, j).join(""));
+      } else {
+        cur.push(chars.slice(i, j).join(""));
+      }
+      i = j;
+      continue;
+    }
+    if (c === "|" && codeLen === 0) {
+      cells.push(cur.join(""));
+      cur = [];
+      i += 1;
+      continue;
+    }
+    cur.push(c);
+    i += 1;
+  }
+  cells.push(cur.join(""));
+  return cells;
+}
+
+/** Parse a row line body.  Returns {cells, lead, trail}. */
+export function parseRowBody(body: string): {
+  cells: string[];
+  lead: boolean;
+  trail: boolean;
+} {
+  const hasLead = body.startsWith("|");
+  const hasTrail = body.endsWith("|");
+  let inner = hasLead ? body.slice(1) : body;
+  if (hasTrail) inner = inner.slice(0, -1);
+  const cells = splitRow(inner).map((c) => pyStrip(c));
+  return { cells, lead: hasLead, trail: hasTrail };
+}
+
+/** Map a delimiter cell to alignment: 'l', 'r', 'c', 'n' or null. */
+export function parseDelimCell(cell: string): "l" | "r" | "c" | "n" | null {
+  const s = pyStrip(cell);
+  if (!/^:?-+:?$/.test(s)) return null;
+  const left = s.startsWith(":");
+  const right = s.endsWith(":");
+  if (left && right) return "c";
+  if (right) return "r";
+  if (left) return "l";
+  return "n";
+}
+
+/** True when `body` is a GFM delimiter row (dashes + optional colons). */
+export function isDelimiterRow(body: string): boolean {
+  if (!body.includes("|")) return false;
+  const { cells } = parseRowBody(body);
+  if (cells.length === 0) return false;
+  for (const c of cells) {
+    if (parseDelimCell(c) === null) return false;
+  }
+  return true;
+}
+
+function normPrefix(prefix: string): string {
+  return prefix.replace(/> ?/g, ">");
+}
+
+export interface Row {
+  cells: string[][]; // per cell: fragments
+}
+
+export interface Table {
+  prefix: string;
+  lead: boolean;
+  trail: boolean;
+  ncols: number;
+  header: string[][]; // fragments per header cell
+  aligns: string[];
+  sepCells: string[]; // raw delimiter cells
+  rows: Row[];
+  wrapWidth: number;
+  warnings: string[];
+}
+
+/**
+ * Fold multi-line (wrapped) rows back together.
+ *
+ * A line whose first cell is empty is a continuation candidate.  A run of
+ * candidates is merged; if the merged row's joined content still exceeds
+ * `wrapWidth` the merge stands (the row genuinely wrapped), otherwise the
+ * candidates were fresh rows and the merge is undone.  With
+ * `wrapWidth == 0` (no wrapping) nothing is ever merged.
+ */
+function mergeContinuations(rows: Row[], wrapWidth: number): Row[] {
+  const result: Row[] = [];
+  let i = 0;
+  const n = rows.length;
+  while (i < n) {
+    const row = rows[i]!;
+    let j = i + 1;
+    let merged: Row | null = null;
+    const isContinuation = (r: Row): boolean =>
+      r.cells.length > 0 && r.cells[0]!.length === 1 && r.cells[0]![0] === "";
+    while (j < n && isContinuation(rows[j]!)) {
+      if (merged === null) {
+        merged = { ...row, cells: row.cells.map((c) => [...c]) };
+      }
+      const cand = rows[j]!;
+      for (let k = 0; k < merged.cells.length; k++) {
+        if (!(cand.cells[k]!.length === 1 && cand.cells[k]![0] === "")) {
+          merged.cells[k]!.push(cand.cells[k]![0]!);
+        }
+      }
+      j += 1;
+    }
+    if (merged !== null) {
+      const maxw = Math.max(...merged.cells.map((c) => displayWidth(c.join(" "))));
+      if (wrapWidth && maxw > wrapWidth) {
+        result.push(merged);
+        i = j;
+        continue;
+      }
+      // wrong merge: keep the row, re-examine candidates as fresh rows
+      result.push(row);
+      i += 1;
+      continue;
+    }
+    result.push(row);
+    i += 1;
+  }
+  return result;
+}
+
+/** Collect the table starting at line `i`; returns {table, next} or null. */
+export function collectTable(
+  lines: string[],
+  i: number,
+  wrapWidth: number,
+  tabWidth: number,
+): { table: Table; next: number } | null {
+  const m0 = lines[i]!.match(PREFIX_RE);
+  const m1 = lines[i + 1]!.match(PREFIX_RE);
+  if (m0 === null || m1 === null || m0.groups === undefined || m1.groups === undefined) {
+    return null;
+  }
+  const prefix0 = m0.groups.prefix;
+  const body0 = pyRstrip(m0.groups.body);
+  const body1 = pyRstrip(m1.groups.body);
+  if (!body0 || !isDelimiterRow(body1)) return null;
+  const { cells: headerCells, lead, trail } = parseRowBody(body0);
+  const { cells: delimCells } = parseRowBody(body1);
+  // Tabs expand relative to the cell's own start (the column a tab stop
+  // lands on depends on the cell content, not the raw line position).
+  const expHeader = headerCells.map((cell) => expandTabs(cell, tabWidth));
+  const expDelim = delimCells.map((cell) => expandTabs(cell, tabWidth));
+  const aligns: string[] = [];
+  for (const c of expDelim) {
+    const a = parseDelimCell(c);
+    if (a === null) return null;
+    aligns.push(a);
+  }
+  const ncols = aligns.length;
+  if (ncols === 0) return null;
+  // GFM: the header row must have exactly as many cells as the delimiter
+  // row; a mismatch means this is not a table (e.g. `a | b` + `---` is a
+  // setext heading) and the lines must pass through untouched.
+  if (expHeader.length !== ncols) return null;
+  const warnings: string[] = [];
+  const header = expHeader.map((c) => [c]);
+
+  const rows: Row[] = [];
+  let j = i + 2;
+  while (j < lines.length) {
+    const line = lines[j]!;
+    if (!pyStrip(line)) break;
+    const m = line.match(PREFIX_RE);
+    if (m === null || m.groups === undefined ||
+        normPrefix(m.groups.prefix) !== normPrefix(prefix0)) {
+      break;
+    }
+    const body = pyRstrip(m.groups.body);
+    if (!body) break;
+    if (BLOCK_START_RE.test(body) || HR_RE.test(body)) break;
+    if (ncols > 1 && !body.includes("|")) break;
+    let { cells } = parseRowBody(body);
+    cells = cells.map((cell) => expandTabs(cell, tabWidth));
+    if (cells.length > ncols) {
+      warnings.push(
+        `row ${j + 1} has ${cells.length} cells but table has ${ncols} column(s); extra cell(s) dropped`);
+    }
+    cells = cells.concat(new Array<string>(ncols).fill("")).slice(0, ncols);
+    rows.push({ cells: cells.map((c) => [c]) });
+    j += 1;
+  }
+  const mergedRows = mergeContinuations(rows, wrapWidth);
+  return {
+    table: {
+      prefix: prefix0,
+      lead,
+      trail,
+      ncols,
+      header,
+      aligns,
+      sepCells: expDelim,
+      rows: mergedRows,
+      wrapWidth,
+      warnings,
+    },
+    next: j,
+  };
+}
+
+/** Locate all tables; returns [start_line, end_line, Table] in line order. */
+export function findTables(
+  lines: string[],
+  wrapWidth: number,
+  tabWidth: number,
+): Array<[number, number, Table]> {
+  const tables: Array<[number, number, Table]> = [];
+  let i = 0;
+  const n = lines.length;
+  let fence: [string, number] | null = null;
+  while (i < n) {
+    const line = lines[i]!;
+    if (fence !== null) {
+      const [ch, flen] = fence;
+      if (new RegExp("^ {0,3}(?:> ?)*" + ch + "{" + flen + ",}[ \\t]*$").test(line)) {
+        fence = null;
+      }
+      i += 1;
+      continue;
+    }
+    if (MATH_OPEN_RE.test(line)) {
+      i += 1;
+      while (i < n && !MATH_OPEN_RE.test(lines[i]!)) i += 1;
+      if (i < n) i += 1; // skip the closing $$
+      continue;
+    }
+    if (HTML_BLOCK_RE.test(line)) {
+      i += 1;
+      while (i < n && pyStrip(lines[i]!)) i += 1;
+      continue;
+    }
+    const mf = line.match(FENCE_OPEN_RE);
+    if (mf !== null) {
+      fence = [mf[1]![0]!, mf[1]!.length];
+      i += 1;
+      continue;
+    }
+    if (pyStrip(line) && i + 1 < n) {
+      const found = collectTable(lines, i, wrapWidth, tabWidth);
+      if (found !== null) {
+        tables.push([i, found.next, found.table]);
+        i = found.next;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return tables;
+}
