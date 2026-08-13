@@ -745,3 +745,166 @@ export function findTables(
   }
   return tables;
 }
+
+// ---------------------------------------------------------------------------
+// Wrapping
+// ---------------------------------------------------------------------------
+
+const PREFERRED_BREAK: Record<string, true> = {
+  "/": true, "?": true, "&": true, "=": true, ".": true, "_": true,
+  "-": true, ",": true, ";": true, ":": true,
+};
+
+/**
+ * Hard-split one unbreakable token into chunks of <= maxWidth columns.
+ *
+ * Prefers cutting after URL-friendly punctuation; falls back to exact
+ * display-width chunks (which yields per-character wrapping for CJK).
+ */
+function splitWord(word: string, maxWidth: number): string[] {
+  if (displayWidth(word) <= maxWidth) return [word];
+  const chars = Array.from(word);
+  const chunks: string[] = [];
+  let pos = 0;
+  const n = chars.length;
+  while (pos < n) {
+    let w = 0;
+    let end = pos;
+    let lastPref = -1;
+    let k = pos;
+    while (k < n) {
+      const cw = displayWidth(chars[k]!);
+      if (w + cw > maxWidth) break;
+      w += cw;
+      end = k;
+      if (PREFERRED_BREAK[chars[k]!] === true) lastPref = k;
+      k += 1;
+    }
+    let cut: number;
+    if (lastPref > pos &&
+        displayWidth(chars.slice(pos, lastPref + 1).join("")) >= maxWidth * 0.5) {
+      cut = lastPref + 1;
+    } else {
+      cut = end + 1 > pos ? end + 1 : pos + 1; // always make progress
+    }
+    chunks.push(chars.slice(pos, cut).join(""));
+    pos = cut;
+  }
+  return chunks;
+}
+
+interface WrapItem {
+  pieces: Array<["ansi" | "plain", string]>;
+  width: number;
+}
+
+/** Split an over-long word item into chunk items, keeping ANSI styling. */
+function hardSplitItem(item: WrapItem, maxWidth: number): WrapItem[] {
+  const pieces = item.pieces;
+  let plainIdx = -1;
+  for (let i = 0; i < pieces.length; i++) {
+    if (pieces[i]![0] === "plain") {
+      plainIdx = i;
+      break;
+    }
+  }
+  if (plainIdx === -1) return [item]; // degenerate all-ANSI item: nothing to split
+  const word = pieces[plainIdx]![1];
+  const chunks = splitWord(word, maxWidth);
+  const out: WrapItem[] = [];
+  for (const ch of chunks) {
+    const newPieces = [
+      ...pieces.slice(0, plainIdx),
+      ["plain", ch] as ["plain", string],
+      ...pieces.slice(plainIdx + 1),
+    ];
+    out.push({ pieces: newPieces, width: displayWidth(ch) });
+  }
+  return out;
+}
+
+/**
+ * Wrap cell text into fragments, each <= `maxWidth` display columns.
+ *
+ * Wraps at word boundaries (words joined with a single space; whitespace
+ * runs at break points collapse to one space).  Unbreakable tokens wider
+ * than `maxWidth` are hard-split.  ANSI escapes stay attached to their
+ * text and are repeated on hard-split chunks so styling survives.
+ */
+export function wrapCell(text: string, maxWidth: number): string[] {
+  if (displayWidth(text) <= maxWidth) return [text];
+  const items: WrapItem[] = []; // words/ansi
+  let cur: Array<["ansi" | "plain", string]> = []; // pending ansi pieces
+  let gap = 1; // spaces before the next word
+  for (const [kind, s] of tokenize(text)) {
+    if (kind === "ansi") {
+      cur.push([kind, s]);
+      continue;
+    }
+    const wordRe = new RegExp(WS_CLASS + "+|[^" + WS + "]+", "g");
+    for (const m of s.matchAll(wordRe)) {
+      const part = m[0];
+      if (pyIsSpace(part)) {
+        if (cur.length > 0 && items.length > 0) {
+          // ANSI between words: emit it as its own zero-width item
+          // so the spaces on BOTH sides survive.
+          items.push({ pieces: cur, width: 0 });
+          cur = [];
+        }
+        gap += part.length;
+        continue;
+      }
+      if (items.length > 0 && gap === 0 && cur.length > 0) {
+        // ANSI code sits *inside* a word (no whitespace on either
+        // side): merge into the previous word instead of starting a
+        // new one, so wrapping never inserts a spurious space.
+        const last = items[items.length - 1]!;
+        last.pieces = [...last.pieces, ...cur, ["plain", part]];
+        last.width = displayWidth(last.pieces.map((p) => p[1]).join(""));
+        cur = [];
+        continue;
+      }
+      items.push({ pieces: [...cur, ["plain", part]], width: displayWidth(part) });
+      cur = [];
+      gap = 0;
+    }
+  }
+  if (cur.length > 0 && items.length > 0) {
+    // trailing ansi: keep with last word
+    const last = items[items.length - 1]!;
+    last.pieces = [...last.pieces, ...cur];
+  }
+
+  const fragments: WrapItem[][] = [];
+  let curFrag: WrapItem[] = [];
+  let curW = 0;
+  for (const it of items) {
+    const add = curFrag.length === 0 ? it.width : it.width + 1;
+    if (curW + add <= maxWidth) {
+      curFrag.push(it);
+      curW += add;
+    } else {
+      if (curFrag.length > 0) fragments.push(curFrag);
+      if (it.width <= maxWidth) {
+        curFrag = [it];
+        curW = it.width;
+      } else {
+        const chunks = hardSplitItem(it, maxWidth);
+        for (const ch of chunks.slice(0, -1)) fragments.push([ch]);
+        curFrag = [chunks[chunks.length - 1]!];
+        curW = chunks[chunks.length - 1]!.width;
+      }
+    }
+  }
+  if (curFrag.length > 0) fragments.push(curFrag);
+  const out: string[] = [];
+  for (const frag of fragments) {
+    const parts: string[] = [];
+    for (const it of frag) {
+      if (parts.length > 0) parts.push(" "); // one space between words
+      parts.push(it.pieces.map((p) => p[1]).join(""));
+    }
+    out.push(parts.join(""));
+  }
+  return out;
+}
