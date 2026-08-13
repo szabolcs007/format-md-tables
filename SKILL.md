@@ -21,9 +21,6 @@ bun skill://format-md-tables/format_md_tables.ts --check path/to/file.md
 # Print a unified diff to stderr without modifying (exit 1 if any file would change)
 bun skill://format-md-tables/format_md_tables.ts --diff path/to/file.md
 
-# Disable column wrapping (default max width is 40 display columns)
-bun skill://format-md-tables/format_md_tables.ts --max-width 0 path/to/file.md
-
 # With no file arguments: read stdin, write the aligned result to stdout
 cat file.md | bun skill://format-md-tables/format_md_tables.ts
 ```
@@ -40,12 +37,9 @@ Aligns every `|` of each GFM table to the same display column for a monospace re
 - ANSI escape codes — 0 columns, preserved
 - Tabs — expanded at 8-column tab stops
 
-Columns wider than `--max-width` (default 40) display columns are wrapped into multiple physical lines; continuation lines get an empty first cell and identical pipe positions. Wrapping rules:
+Long cells are never automatically wrapped, truncated, split, or annotated. The full display width of every cell determines its column width, so tables with very long prose, URLs, CJK text, or emoji may be horizontally wide. Empty first cells are ordinary physical rows, not continuation markers.
 
-- Word text breaks at word boundaries, preferring `/?&=._-,;:`
-- CJK text without spaces wraps per character
-- Unbreakable tokens wider than the limit are hard-split
-- **Column 0 (and single-column tables) never wrap** — a wrapped cell's continuation lines would put content in the first cell, re-parse as new rows (and render as extra rows in GFM renderers), corrupting the row count. Wrapping applies to columns 1..n-1 only; `--max-width 0` disables wrapping everywhere.
+When a target renderer needs a narrower presentation, choose the structure manually: use `<br>` where supported, move prose into a list, or split a large table into smaller tables. The formatter never inserts these constructs.
 
 Escaped pipes (`\|`), pipes inside inline code spans, blockquote prefixes, and mixed leading/trailing pipe styles are handled; header/delimiter column-count mismatches are not tables per GFM and are left untouched.
 
@@ -60,7 +54,7 @@ Escaped pipes (`\|`), pipes inside inline code spans, blockquote prefixes, and m
 
 ## Verification
 
-- After running, visually verify your tables in a monospace renderer: alignment, wrapped continuation rows, and row counts — especially for wide or single-column tables.
+- After running, visually verify alignment and row counts in a monospace renderer, especially for wide tables and manually authored empty-first-cell rows.
 - The tool's own test suite (in `tests/`) validates the tool; run it only when you are changing `format_md_tables.ts` itself, not to verify your tables.
 
 ## Requirements

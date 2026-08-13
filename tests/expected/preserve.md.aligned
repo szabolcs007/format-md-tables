@@ -68,18 +68,6 @@ Some rows end with spaces after the final pipe (rows 1 and 3). The aligner must 
 | c | d |
 | e | f |  
 
-## 7. Hand-made wrapped row
-
-One logical row was wrapped by hand: the continuation line starts with an empty first cell. The aligner must re-parse and re-render this table correctly — the continuation belongs to the previous row, not a row of its own.
-
-| col1   | col2                                     | col3   |
-| :----- | :--------------------------------------- | :----- |
-| rowA   | this is a longish cell that someone      |        |
-|        | wrapped                                  | tail   |
-|        | by hand onto a second physical line      |        |
-| rowB   | short                                    | end    |
-
-*If the aligner re-wraps this table the join must be lossless; the two physical lines must be handled as one logical row.*
 
 ## 8. Escaped pipes and inline-code pipes are cell content
 

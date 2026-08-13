@@ -112,9 +112,10 @@
 | 🏽            | 2             |
 | ️              | 0             |
 
-## 7. Long emoji lines — wrap stress
+## 7. Long emoji lines — display-width alignment
 
-*These cells exceed 40 columns. This is a single-column table, so wrapping never applies (continuation lines would re-parse as new rows); each cell stays on one line and identical codepoints must survive realignment.*
+*These cells exceed ordinary terminal widths; each cell stays on one physical
+row and identical codepoints must survive realignment.*
 
 | Status log                                                                                       |
 | ------------------------------------------------------------------------------------------------ |

@@ -11,7 +11,7 @@ import {
 } from "../format_md_tables.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { FIXTURES, MAX_WIDTH, extract_galleries, readText } from "./helpers.ts";
+import { FIXTURES, extract_galleries, readText } from "./helpers.ts";
 
 describe("splitRow", () => {
   test("backslash-escaped pipe is kept, not a delimiter", () => {
@@ -49,7 +49,7 @@ describe("parseRowBody", () => {
     expect(parseRowBody("a | b")).toEqual({ cells: ["a", "b"], lead: false, trail: false });
   });
 
-  test("empty first cell is a continuation candidate", () => {
+  test("empty first cell is preserved as a plain cell", () => {
     expect(parseRowBody("| | x |")).toEqual({ cells: ["", "x"], lead: true, trail: true });
   });
 });
@@ -88,32 +88,32 @@ describe("isDelimiterRow", () => {
 
 describe("findTables", () => {
   test("header/delimiter cell-count mismatch is NOT a table", () => {
-    expect(findTables(["| a | b | c |", "| --- | --- |"], MAX_WIDTH, 8)).toEqual([]);
+    expect(findTables(["| a | b | c |", "| --- | --- |"], 8)).toEqual([]);
   });
 
   test("a bare --- under a pipe row is not a table (setext)", () => {
-    expect(findTables(["a | b", "---"], MAX_WIDTH, 8)).toEqual([]);
+    expect(findTables(["a | b", "---"], 8)).toEqual([]);
   });
 
   test("blockquote-prefixed tables are collected with prefix preserved", () => {
-    const tables = findTables(["> | a | b |", "> | --- | --- |", "> | c | d |"], MAX_WIDTH, 8);
+    const tables = findTables(["> | a | b |", "> | --- | --- |", "> | c | d |"], 8);
     expect(tables.length).toBe(1);
     expect(tables[0][2].prefix).toBe("> ");
   });
 
   test("table inside a fenced code block is not collected", () => {
     const lines = ["```", "| a | b |", "| --- | --- |", "```"];
-    expect(findTables(lines, MAX_WIDTH, 8)).toEqual([]);
+    expect(findTables(lines, 8)).toEqual([]);
   });
 
   test("table inside a math block is not collected", () => {
     const lines = ["$$", "| a | b |", "| --- | --- |", "$$"];
-    expect(findTables(lines, MAX_WIDTH, 8)).toEqual([]);
+    expect(findTables(lines, 8)).toEqual([]);
   });
 
   test("table inside an HTML block is not collected", () => {
     const lines = ["<div>", "| a | b |", "| --- | --- |", "</div>"];
-    expect(findTables(lines, MAX_WIDTH, 8)).toEqual([]);
+    expect(findTables(lines, 8)).toEqual([]);
   });
 });
 
@@ -166,19 +166,7 @@ const SPANS: Record<string, Array<[number, number, number, string[]]>> = {
     [58, 73, 2, ["n", "n"]],
     [78, 92, 2, ["n", "n"]],
     [97, 113, 2, ["n", "n"]],
-    [118, 123, 1, ["n"]],
-  ],
-  "wrapping.md": [
-    [15, 23, 2, ["n", "n"]],
-    [29, 34, 2, ["n", "n"]],
-    [40, 45, 2, ["n", "n"]],
-    [52, 58, 2, ["n", "n"]],
-    [66, 71, 3, ["n", "n", "n"]],
-    [77, 82, 3, ["n", "n", "n"]],
-    [88, 92, 2, ["n", "n"]],
-    [98, 103, 2, ["n", "n"]],
-    [111, 117, 2, ["n", "n"]],
-    [124, 135, 2, ["n", "n"]],
+    [119, 124, 1, ["n"]],
   ],
   "structure-edge-cases.md": [
     [12, 16, 2, ["n", "n"]],
@@ -228,17 +216,16 @@ const SPANS: Record<string, Array<[number, number, number, string[]]>> = {
     [31, 36, 3, ["l", "r", "l"]],
     [44, 48, 2, ["l", "r"]],
     [54, 59, 2, ["n", "n"]],
-    [74, 79, 3, ["l", "l", "l"]],
-    [86, 91, 2, ["n", "n"]],
-    [101, 104, 3, ["l", "l", "l"]],
-    [113, 116, 2, ["l", "r"]],
-    [125, 128, 2, ["n", "r"]],
+    [75, 80, 2, ["n", "n"]],
+    [90, 93, 3, ["l", "l", "l"]],
+    [102, 105, 2, ["l", "r"]],
+    [114, 117, 2, ["n", "r"]],
   ],
   "bytes-and-ansi.md": [
     [11, 17, 2, ["n", "n"]],
-    [24, 27, 2, ["n", "n"]],
-    [32, 35, 2, ["n", "n"]],
-    [36, 39, 2, ["n", "n"]],
+    [22, 25, 2, ["n", "n"]],
+    [30, 33, 2, ["n", "n"]],
+    [34, 37, 2, ["n", "n"]],
   ],
 };
 
@@ -247,7 +234,7 @@ describe("fixture span dump matches Python reference", () => {
   for (const name of FIXTURES) {
     test(`spans of ${name}`, () => {
       const text = readText(path.join(fixtureDir, "tests", name));
-      const got = findTables(text.split("\n"), MAX_WIDTH, 8).map(
+      const got = findTables(text.split("\n"), 8).map(
         ([s, e, t]) => [s, e, t.ncols, t.aligns],
       );
       expect(got).toEqual(SPANS[name]);

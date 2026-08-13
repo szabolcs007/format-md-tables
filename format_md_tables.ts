@@ -1,8 +1,8 @@
 // format_md_tables.ts — realign the vertical borders of markdown tables.
 //
-// TypeScript port of format_md_tables.py, behavior-identical: same output
-// bytes, same exit codes (0 = ok/no change, 1 = change needed under
-// --check/--diff, 2 = usage/IO error), same messages.
+// TypeScript implementation with the same exit-code contract as the former
+// Python tool. The current clean cutover intentionally does not retain its
+// automatic cell-wrapping behavior.
 //
 // Ensures that in a monospace renderer every `|` of a table sits at exactly
 // the same display column, regardless of CJK ideographs, fullwidth forms,
@@ -567,7 +567,7 @@ function normPrefix(prefix: string): string {
 }
 
 export interface Row {
-  cells: string[][]; // per cell: fragments
+  cells: string[];
 }
 
 export interface Table {
@@ -575,68 +575,18 @@ export interface Table {
   lead: boolean;
   trail: boolean;
   ncols: number;
-  header: string[][]; // fragments per header cell
+  header: string[];
   aligns: string[];
-  sepCells: string[]; // raw delimiter cells
+  sepCells: string[];
   rows: Row[];
-  wrapWidth: number;
   warnings: string[];
 }
 
-/**
- * Fold multi-line (wrapped) rows back together.
- *
- * A line whose first cell is empty is a continuation candidate.  A run of
- * candidates is merged; if the merged row's joined content still exceeds
- * `wrapWidth` the merge stands (the row genuinely wrapped), otherwise the
- * candidates were fresh rows and the merge is undone.  With
- * `wrapWidth == 0` (no wrapping) nothing is ever merged.
- */
-function mergeContinuations(rows: Row[], wrapWidth: number): Row[] {
-  const result: Row[] = [];
-  let i = 0;
-  const n = rows.length;
-  while (i < n) {
-    const row = rows[i]!;
-    let j = i + 1;
-    let merged: Row | null = null;
-    const isContinuation = (r: Row): boolean =>
-      r.cells.length > 0 && r.cells[0]!.length === 1 && r.cells[0]![0] === "";
-    while (j < n && isContinuation(rows[j]!)) {
-      if (merged === null) {
-        merged = { ...row, cells: row.cells.map((c) => [...c]) };
-      }
-      const cand = rows[j]!;
-      for (let k = 0; k < merged.cells.length; k++) {
-        if (!(cand.cells[k]!.length === 1 && cand.cells[k]![0] === "")) {
-          merged.cells[k]!.push(cand.cells[k]![0]!);
-        }
-      }
-      j += 1;
-    }
-    if (merged !== null) {
-      const maxw = Math.max(...merged.cells.map((c) => displayWidth(c.join(" "))));
-      if (wrapWidth && maxw > wrapWidth) {
-        result.push(merged);
-        i = j;
-        continue;
-      }
-      // wrong merge: keep the row, re-examine candidates as fresh rows
-      result.push(row);
-      i += 1;
-      continue;
-    }
-    result.push(row);
-    i += 1;
-  }
-  return result;
-}
 
 /** Collect the table starting at line `i`; returns {table, next} or null. */
 export function collectTable(
   lines: string[],
   i: number,
-  wrapWidth: number,
   tabWidth: number,
 ): { table: Table; next: number } | null {
   const m0 = lines[i]!.match(PREFIX_RE);
@@ -667,7 +617,7 @@ export function collectTable(
   // setext heading) and the lines must pass through untouched.
   if (expHeader.length !== ncols) return null;
   const warnings: string[] = [];
-  const header = expHeader.map((c) => [c]);
+  const header = expHeader;
 
   const rows: Row[] = [];
   let j = i + 2;
@@ -690,10 +640,9 @@ export function collectTable(
         `row ${j + 1} has ${cells.length} cells but table has ${ncols} column(s); extra cell(s) dropped`);
     }
     cells = cells.concat(new Array<string>(ncols).fill("")).slice(0, ncols);
-    rows.push({ cells: cells.map((c) => [c]) });
+    rows.push({ cells });
     j += 1;
   }
-  const mergedRows = mergeContinuations(rows, wrapWidth);
   return {
     table: {
       prefix: prefix0,
@@ -703,8 +652,7 @@ export function collectTable(
       header,
       aligns,
       sepCells: expDelim,
-      rows: mergedRows,
-      wrapWidth,
+      rows,
       warnings,
     },
     next: j,
@@ -714,7 +662,6 @@ export function collectTable(
 /** Locate all tables; returns [start_line, end_line, Table] in line order. */
 export function findTables(
   lines: string[],
-  wrapWidth: number,
   tabWidth: number,
 ): Array<[number, number, Table]> {
   const tables: Array<[number, number, Table]> = [];
@@ -749,7 +696,7 @@ export function findTables(
       continue;
     }
     if (pyStrip(line) && i + 1 < n) {
-      const found = collectTable(lines, i, wrapWidth, tabWidth);
+      const found = collectTable(lines, i, tabWidth);
       if (found !== null) {
         tables.push([i, found.next, found.table]);
         i = found.next;
@@ -761,168 +708,6 @@ export function findTables(
   return tables;
 }
 
-// ---------------------------------------------------------------------------
-// Wrapping
-// ---------------------------------------------------------------------------
-
-const PREFERRED_BREAK: Record<string, true> = {
-  "/": true, "?": true, "&": true, "=": true, ".": true, "_": true,
-  "-": true, ",": true, ";": true, ":": true,
-};
-
-/**
- * Hard-split one unbreakable token into chunks of <= maxWidth columns.
- *
- * Prefers cutting after URL-friendly punctuation; falls back to exact
- * display-width chunks (which yields per-character wrapping for CJK).
- */
-function splitWord(word: string, maxWidth: number): string[] {
-  if (displayWidth(word) <= maxWidth) return [word];
-  const chars = Array.from(word);
-  const chunks: string[] = [];
-  let pos = 0;
-  const n = chars.length;
-  while (pos < n) {
-    let w = 0;
-    let end = pos;
-    let lastPref = -1;
-    let k = pos;
-    while (k < n) {
-      const cw = displayWidth(chars[k]!);
-      if (w + cw > maxWidth) break;
-      w += cw;
-      end = k;
-      if (PREFERRED_BREAK[chars[k]!] === true) lastPref = k;
-      k += 1;
-    }
-    let cut: number;
-    if (lastPref > pos &&
-        displayWidth(chars.slice(pos, lastPref + 1).join("")) >= maxWidth * 0.5) {
-      cut = lastPref + 1;
-    } else {
-      cut = end + 1 > pos ? end + 1 : pos + 1; // always make progress
-    }
-    chunks.push(chars.slice(pos, cut).join(""));
-    pos = cut;
-  }
-  return chunks;
-}
-
-interface WrapItem {
-  pieces: Array<["ansi" | "plain", string]>;
-  width: number;
-}
-
-/** Split an over-long word item into chunk items, keeping ANSI styling. */
-function hardSplitItem(item: WrapItem, maxWidth: number): WrapItem[] {
-  const pieces = item.pieces;
-  let plainIdx = -1;
-  for (let i = 0; i < pieces.length; i++) {
-    if (pieces[i]![0] === "plain") {
-      plainIdx = i;
-      break;
-    }
-  }
-  if (plainIdx === -1) return [item]; // degenerate all-ANSI item: nothing to split
-  const word = pieces[plainIdx]![1];
-  const chunks = splitWord(word, maxWidth);
-  const out: WrapItem[] = [];
-  for (const ch of chunks) {
-    const newPieces = [
-      ...pieces.slice(0, plainIdx),
-      ["plain", ch] as ["plain", string],
-      ...pieces.slice(plainIdx + 1),
-    ];
-    out.push({ pieces: newPieces, width: displayWidth(ch) });
-  }
-  return out;
-}
-
-/**
- * Wrap cell text into fragments, each <= `maxWidth` display columns.
- *
- * Wraps at word boundaries (words joined with a single space; whitespace
- * runs at break points collapse to one space).  Unbreakable tokens wider
- * than `maxWidth` are hard-split.  ANSI escapes stay attached to their
- * text and are repeated on hard-split chunks so styling survives.
- */
-export function wrapCell(text: string, maxWidth: number): string[] {
-  if (displayWidth(text) <= maxWidth) return [text];
-  const items: WrapItem[] = []; // words/ansi
-  let cur: Array<["ansi" | "plain", string]> = []; // pending ansi pieces
-  let gap = 1; // spaces before the next word
-  for (const [kind, s] of tokenize(text)) {
-    if (kind === "ansi") {
-      cur.push([kind, s]);
-      continue;
-    }
-    const wordRe = new RegExp(WS_CLASS + "+|[^" + WS + "]+", "g");
-    for (const m of s.matchAll(wordRe)) {
-      const part = m[0];
-      if (pyIsSpace(part)) {
-        if (cur.length > 0 && items.length > 0) {
-          // ANSI between words: emit it as its own zero-width item
-          // so the spaces on BOTH sides survive.
-          items.push({ pieces: cur, width: 0 });
-          cur = [];
-        }
-        gap += part.length;
-        continue;
-      }
-      if (items.length > 0 && gap === 0 && cur.length > 0) {
-        // ANSI code sits *inside* a word (no whitespace on either
-        // side): merge into the previous word instead of starting a
-        // new one, so wrapping never inserts a spurious space.
-        const last = items[items.length - 1]!;
-        last.pieces = [...last.pieces, ...cur, ["plain", part]];
-        last.width = displayWidth(last.pieces.map((p) => p[1]).join(""));
-        cur = [];
-        continue;
-      }
-      items.push({ pieces: [...cur, ["plain", part]], width: displayWidth(part) });
-      cur = [];
-      gap = 0;
-    }
-  }
-  if (cur.length > 0 && items.length > 0) {
-    // trailing ansi: keep with last word
-    const last = items[items.length - 1]!;
-    last.pieces = [...last.pieces, ...cur];
-  }
-
-  const fragments: WrapItem[][] = [];
-  let curFrag: WrapItem[] = [];
-  let curW = 0;
-  for (const it of items) {
-    const add = curFrag.length === 0 ? it.width : it.width + 1;
-    if (curW + add <= maxWidth) {
-      curFrag.push(it);
-      curW += add;
-    } else {
-      if (curFrag.length > 0) fragments.push(curFrag);
-      if (it.width <= maxWidth) {
-        curFrag = [it];
-        curW = it.width;
-      } else {
-        const chunks = hardSplitItem(it, maxWidth);
-        for (const ch of chunks.slice(0, -1)) fragments.push([ch]);
-        curFrag = [chunks[chunks.length - 1]!];
-        curW = chunks[chunks.length - 1]!.width;
-      }
-    }
-  }
-  if (curFrag.length > 0) fragments.push(curFrag);
-  const out: string[] = [];
-  for (const frag of fragments) {
-    const parts: string[] = [];
-    for (const it of frag) {
-      if (parts.length > 0) parts.push(" "); // one space between words
-      parts.push(it.pieces.map((p) => p[1]).join(""));
-    }
-    out.push(parts.join(""));
-  }
-  return out;
-}
 
 // ---------------------------------------------------------------------------
 // Whole-text / file processing
@@ -932,52 +717,19 @@ function pad(frag: string, width: number): string {
   return frag + " ".repeat(width - displayWidth(frag));
 }
 
-/** Render one logical row; returns one string per physical line. */
+/** Render one logical row; returns one physical line. */
 function renderRow(
-  cells: string[][],
+  cells: string[],
   widths: number[],
   lead: boolean,
   trail: boolean,
-  _wrapWidth: number,
   prefix: string,
-): string[] {
-  const fragsPerCell: string[][] = [];
-  let height = 1;
-  for (let j = 0; j < cells.length; j++) {
-    let frags = cells[j]!;
-    if (frags.length === 0) {
-      frags = [""];
-    } else if (j > 0) {
-      // Wrap every fragment that exceeds the column width, even inside
-      // multi-fragment (previously wrapped/merged) cells.  Column 0 is
-      // never wrapped (see renderTable).
-      const wrapped: string[] = [];
-      for (const frag of frags) {
-        if (displayWidth(frag) > widths[j]!) {
-          wrapped.push(...wrapCell(frag, widths[j]!));
-        } else {
-          wrapped.push(frag);
-        }
-      }
-      frags = wrapped;
-    }
-    fragsPerCell.push(frags);
-    height = Math.max(height, frags.length);
-  }
-  const parts: string[] = [];
-  for (let k = 0; k < height; k++) {
-    const rowParts: string[] = [];
-    for (let j = 0; j < fragsPerCell.length; j++) {
-      const frags = fragsPerCell[j]!;
-      const frag = k < frags.length ? frags[k]! : "";
-      rowParts.push(pad(frag, widths[j]!));
-    }
-    let body = rowParts.join(" | ");
-    if (lead) body = "| " + body;
-    if (trail) body += " |";
-    parts.push(prefix + body);
-  }
-  return parts;
+): string {
+  const rowParts = cells.map((cell, j) => pad(cell, widths[j]!));
+  let body = rowParts.join(" | ");
+  if (lead) body = "| " + body;
+  if (trail) body += " |";
+  return prefix + body;
 }
 
 function renderSep(
@@ -1010,43 +762,33 @@ function renderSep(
 }
 
 export function renderTable(t: Table): string[] {
-  // Column 0 never wraps, and single-column tables never wrap: a wrapped
-  // cell's continuation line would put content in the first cell, making it
-  // indistinguishable from a fresh row on re-parse (and in any GFM
-  // renderer), silently changing the row count.  Wrapping later columns
-  // always produces continuations with an empty first cell, which the
-  // merge logic recognises.
-  const wrap = t.ncols > 1 ? t.wrapWidth : 0;
   const widths: number[] = [];
   for (let j = 0; j < t.ncols; j++) {
     let cw = 0;
     for (const row of t.rows) {
-      cw = Math.max(cw, displayWidth(row.cells[j]!.join(" ")));
+      cw = Math.max(cw, displayWidth(row.cells[j]!));
     }
     for (const cell of t.header) {
-      cw = Math.max(cw, displayWidth(cell.join(" ")));
+      cw = Math.max(cw, displayWidth(cell));
     }
     if (j < t.sepCells.length) {
       cw = Math.max(cw, displayWidth(t.sepCells[j]!));
     }
-    if (wrap && j > 0) {
-      cw = Math.min(cw, wrap);
-    }
     widths.push(Math.max(3, cw));
   }
   const out: string[] = [];
-  out.push(...renderRow(t.header, widths, t.lead, t.trail, t.wrapWidth, t.prefix));
+  out.push(renderRow(t.header, widths, t.lead, t.trail, t.prefix));
   out.push(renderSep(t.aligns, widths, t.lead, t.trail, t.prefix));
   for (const row of t.rows) {
-    out.push(...renderRow(row.cells, widths, t.lead, t.trail, t.wrapWidth, t.prefix));
+    out.push(renderRow(row.cells, widths, t.lead, t.trail, t.prefix));
   }
   return out;
 }
 
+
 /** Align every table in `text`; returns {text: newText, changed}. */
 export function alignText(
   text: string,
-  wrapWidth = 40,
   tabWidth = 8,
   warnings?: string[],
 ): { text: string; changed: boolean } {
@@ -1058,7 +800,7 @@ export function alignText(
   const eol = crlf > lf ? "\r\n" : "\n";
 
   const lines = text.split("\n").map((line) => line.replace(/\r+$/, ""));
-  const tables = findTables(lines, wrapWidth, tabWidth);
+  const tables = findTables(lines, tabWidth);
   if (tables.length === 0) {
     return { text: (bom ? BOM_TEXT : "") + text, changed: false };
   }
@@ -1105,7 +847,6 @@ function writeFile(p: string, data: Buffer): void {
  */
 export function alignBytes(
   raw: Buffer,
-  wrapWidth: number,
   tabWidth: number,
   warnings?: string[],
 ): { data: Buffer; changed: boolean } {
@@ -1118,7 +859,7 @@ export function alignBytes(
   } catch {
     throw new Error("not valid UTF-8");
   }
-  const { text: newText, changed } = alignText(text, wrapWidth, tabWidth, warnings);
+  const { text: newText, changed } = alignText(text, tabWidth, warnings);
   let data = Buffer.from(newText, "utf-8");
   if (hadBom && !data.subarray(0, 3).equals(BOM_BYTES)) {
     data = Buffer.concat([BOM_BYTES, data]);
@@ -1129,12 +870,11 @@ export function alignBytes(
 /** Align a file in place; returns whether it changed. */
 export function alignFile(
   p: string,
-  wrapWidth: number,
   tabWidth: number,
   warnings?: string[],
 ): boolean {
   const raw = readFileSync(p);
-  const { data, changed } = alignBytes(raw, wrapWidth, tabWidth, warnings);
+  const { data, changed } = alignBytes(raw, tabWidth, warnings);
   if (changed) writeFile(p, data);
   return changed;
 }
@@ -1442,20 +1182,18 @@ function decodeReplace(raw: Buffer): string {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `usage: format_md_tables [-h] [--max-width N] [--tab-width N] [--check]
+const USAGE = `usage: format_md_tables [-h] [--tab-width N] [--check]
                        [--diff] [--version] [FILE ...]
 
 Realign the vertical borders of markdown tables so every | lines up exactly
 in a monospace renderer, accounting for wide characters, emoji, combining
-marks and ANSI codes, and wrapping over-wide cells at word boundaries.
+marks and ANSI codes inside cells.
 
 positional arguments:
   FILE               markdown files to align in place
 
 options:
   -h, --help         show this help message and exit
-  --max-width N      wrap columns wider than N display columns (default 40;
-                     0 disables wrapping)
   --tab-width N      tab stop used when expanding tabs inside cells
                      (default 8)
   --check            do not modify files; exit 1 if any would change
@@ -1494,7 +1232,6 @@ function fsWriteStderr(text: string): void {
 // argparse only accepts `--name` forms for long options (not `-name`).
 // Short options (e.g., `-h`) are handled separately below.
 const OPTIONS: Record<string, { takesValue: boolean }> = {
-  "--max-width": { takesValue: true },
   "--tab-width": { takesValue: true },
   "--check": { takesValue: false },
   "--diff": { takesValue: false },
@@ -1502,19 +1239,16 @@ const OPTIONS: Record<string, { takesValue: boolean }> = {
   "--help": { takesValue: false },
 };
 const OPTION_NAMES = Object.keys(OPTIONS);
-
 /** Parse CLI arguments (argparse-shaped). Returns {args} or {error: code}. */
 function parseArgs(argv: string[]):
   | {
       files: string[];
-      maxWidth: number;
       tabWidth: number;
       check: boolean;
       diff: boolean;
     }
   | { error: number } {
   const files: string[] = [];
-  let maxWidth = 40;
   let tabWidth = 8;
   let check = false;
   let diff = false;
@@ -1534,7 +1268,6 @@ function parseArgs(argv: string[]):
       continue;
     }
     if (/^-\d+$|^-\d*\.\d+$/.test(arg)) {
-      // argparse treats negative numbers as positionals
       files.push(arg);
       i += 1;
       continue;
@@ -1543,23 +1276,8 @@ function parseArgs(argv: string[]):
     const name = eq === -1 ? arg : arg.slice(0, eq);
     const explicitArg = eq === -1 ? null : arg.slice(eq + 1);
 
-    // argparse behavior:
-    // - Long options: `--name` (with optional allow_abbrev prefix matching).
-    // - Short options: single-dash + single character(s). For `-h*`, argparse
-    //   processes `-h` first (help, no value), which prints help and exits
-    //   before consuming the rest.
-    // - Single-dash long forms (`-check`, `-max-width`) are rejected as
-    //   "unrecognized arguments".
-    // - `-h=VALUE` is rejected with "ignored explicit argument".
-
-    // Short options: only `-h` (help) is defined. `-h*` → help, exit 0.
-    // `-h=VALUE` → error (ignored explicit argument).
     if (name.startsWith("-") && !name.startsWith("--")) {
-      // Single-dash form. Only `-h` (help) is a defined short option.
-      // argparse short-option concatenation: `-hx` fires `-h` first, which
-      // prints help and exits before consuming `x`. But `-h=VALUE` is
-      // rejected because `-h` takes no explicit argument.
-      if (name === "-h" || name.startsWith("-h")) {
+      if (name.startsWith("-h")) {
         if (explicitArg !== null) {
           return {
             error: usageError(
@@ -1569,15 +1287,12 @@ function parseArgs(argv: string[]):
         writeText(1, USAGE);
         return { error: 0 };
       }
-      // Any other single-dash form → unrecognized.
       return { error: usageError(`unrecognized arguments: ${arg}`) };
     }
 
-
-    // Long options: `--name` (allow_abbrev prefix matching).
     let opt: string | null = OPTIONS[name] !== undefined ? name : null;
     if (opt === null) {
-      const prefix = name.slice(2); // strip leading `--`
+      const prefix = name.slice(2);
       const matches = OPTION_NAMES.filter((n) => n.slice(2).startsWith(prefix));
       if (matches.length === 1) {
         opt = matches[0]!;
@@ -1590,7 +1305,6 @@ function parseArgs(argv: string[]):
         return { error: usageError(`unrecognized arguments: ${arg}`) };
       }
     }
-
 
     if (!OPTIONS[opt]!.takesValue) {
       if (explicitArg !== null) {
@@ -1626,19 +1340,16 @@ function parseArgs(argv: string[]):
     if (!INT_RE.test(value)) {
       return { error: usageError(`argument ${opt}: invalid int value: '${value}'`) };
     }
-    const num = parseInt(value, 10);
-    if (opt === "--max-width") maxWidth = num;
-    else tabWidth = num;
+    tabWidth = parseInt(value, 10);
   }
-  return { files, maxWidth, tabWidth, check, diff };
+  return { files, tabWidth, check, diff };
 }
 
 export function main(argv: string[]): number {
   const parsed = parseArgs(argv);
   if ("error" in parsed) return parsed.error;
-  const { files, maxWidth, tabWidth, check, diff } = parsed;
+  const { files, tabWidth, check, diff } = parsed;
 
-  if (maxWidth < 0) return usageError("--max-width must be >= 0");
   if (tabWidth < 1) return usageError("--tab-width must be >= 1");
 
   const warnings: string[] = [];
@@ -1655,7 +1366,7 @@ export function main(argv: string[]): number {
     let data: Buffer;
     let changed: boolean;
     try {
-      ({ data, changed } = alignBytes(raw, maxWidth, tabWidth, warnings));
+      ({ data, changed } = alignBytes(raw, tabWidth, warnings));
     } catch (e) {
       fsWriteStderr(`format_md_tables: stdin: ${(e as Error).message}\n`);
       return 2;
@@ -1685,7 +1396,7 @@ export function main(argv: string[]): number {
       let data: Buffer;
       let changed: boolean;
       try {
-        ({ data, changed } = alignBytes(raw, maxWidth, tabWidth, warnings));
+        ({ data, changed } = alignBytes(raw, tabWidth, warnings));
       } catch (e) {
         fsWriteStderr(`format_md_tables: ${p}: ${(e as Error).message}\n`);
         errors += 1;

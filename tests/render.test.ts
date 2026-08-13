@@ -53,24 +53,29 @@ describe("alignText", () => {
     expect(alignText(input).text).toBe(expected);
   });
 
-  test("single-column table never wraps, even with an over-wide cell", () => {
+  test("long cells stay on one physical row and align to full display width", () => {
     const wide = "x".repeat(120);
-    const input = `| h |\n| --- |\n| ${wide} |\n`;
+    const input = `| h | notes |\n| --- | --- |\n| c | ${wide} |\n`;
     const { text, changed } = alignText(input);
     expect(changed).toBe(true);
-    expect(text).toBe(
-      `| h${" ".repeat(119)} |\n| ${"-".repeat(120)} |\n| ${wide} |\n`);
+    const lines = text.trimEnd().split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain(wide);
+    expect(lines[2]).not.toContain("\n");
+    expect(lines.every((line) => line.split("|").length === 4)).toBe(true);
   });
 
-  test("column 0 of a multi-column table never wraps", () => {
-    const wide = "x".repeat(120);
-    const input = `| ${wide} | b |\n| --- | --- |\n| c | d |\n`;
-    const { text, changed } = alignText(input);
-    expect(changed).toBe(true);
-    // header's wide cell inflates every column, then the wrap cap applies
-    // to columns 1..n-1 (Python reference behavior); column 0 stays 120
-    // wide and unwrapped on a single physical line.
-    expect(text.split("\n")[0]).toBe(`| ${wide} | b${" ".repeat(39)} |`);
+  test("empty first-cell rows remain independent physical rows", () => {
+    const input =
+      "| id | text |\n" +
+      "| --- | --- |\n" +
+      "| 1 | first |\n" +
+      "| | second |\n" +
+      "| 2 | third |\n";
+    const { text } = alignText(input);
+    expect(text.split("\n").filter((line) => line.includes("|")).length).toBe(5);
+    expect(text).toContain("second");
+    expect(text).toContain("|      | second");
   });
 
   test("fenced code blocks pass through unchanged", () => {

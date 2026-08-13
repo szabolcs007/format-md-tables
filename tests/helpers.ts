@@ -3,13 +3,10 @@
 import * as A from "../format_md_tables.ts";
 import * as fs from "node:fs";
 
-export const MAX_WIDTH = 40;
-
 export const FIXTURES = [
   "table-at-top.md",
   "unicode-width.md",
   "emoji-hell.md",
-  "wrapping.md",
   "structure-edge-cases.md",
   "blockquotes.md",
   "must-not-touch.md",
@@ -107,7 +104,7 @@ export function pipe_columns(body: string): number[] {
 
 export function check_alignment(name: string, outText: string): void {
   const lines = outText.split("\n");
-  for (const [start, end, t] of A.findTables(lines, MAX_WIDTH, 8)) {
+  for (const [start, end, t] of A.findTables(lines, 8)) {
     const block = lines.slice(start, end);
     let refPipes: number[] | null = null;
     let refWidth: number | null = null;
@@ -133,34 +130,6 @@ export function check_alignment(name: string, outText: string): void {
   }
 }
 
-export function check_width_caps(name: string, outText: string): void {
-  const lines = outText.split("\n");
-  for (const [, , t] of A.findTables(lines, MAX_WIDTH, 8)) {
-    if (t.ncols <= 1) continue; // single-column tables never wrap
-    const widths = t.header.map((c) => Math.max(3, A.displayWidth(c.join(" "))));
-    for (const row of t.rows) {
-      for (let j = 0; j < row.cells.length; j++) {
-        const joined = A.displayWidth(row.cells[j].join(" "));
-        if (j < widths.length) widths[j] = Math.max(widths[j], joined);
-      }
-    }
-    if (MAX_WIDTH) {
-      for (let j = 0; j < widths.length; j++) {
-        if (j !== 0) widths[j] = Math.min(widths[j], MAX_WIDTH);
-      }
-    }
-    for (const row of t.rows) {
-      for (let j = 0; j < row.cells.length; j++) {
-        for (const frag of row.cells[j]) {
-          if (A.displayWidth(frag) > widths[j]) {
-            throw new Error(
-              `width_caps_${name}: fragment ${JSON.stringify(frag)} (${A.displayWidth(frag)}) wider than column ${j}`);
-          }
-        }
-      }
-    }
-  }
-}
 
 export function norm_cell(s: string): string {
   return s.replace(/\s+/g, "");
@@ -173,12 +142,12 @@ export function table_snapshot(text: string): Array<{
   rows: string[][];
 }> {
   const snap = [];
-  for (const [, , t] of A.findTables(text.split("\n"), MAX_WIDTH, 8)) {
+  for (const [, , t] of A.findTables(text.split("\n"), 8)) {
     snap.push({
       ncols: t.ncols,
       aligns: t.aligns,
-      header: t.header.map((c) => norm_cell(c.join(" "))),
-      rows: t.rows.map((row) => row.cells.map((c) => norm_cell(c.join(" ")))),
+      header: t.header.map((c) => norm_cell(c)),
+      rows: t.rows.map((row) => row.cells.map((c) => norm_cell(c))),
     });
   }
   return snap;
@@ -201,7 +170,7 @@ export function check_content(name: string, orig: string, out: string): void {
 export function check_untouched(name: string, orig: string, out: string): void {
   const origLines = orig.split("\n");
   const outLines = out.split("\n");
-  const tableRanges = A.findTables(origLines, MAX_WIDTH, 8).map(([s, e]) => [s, e]);
+  const tableRanges = A.findTables(origLines, 8).map(([s, e]) => [s, e]);
   let p = 0;
   for (let i = 0; i < origLines.length; i++) {
     if (tableRanges.some(([s, e]) => s <= i && i < e)) continue;
@@ -214,21 +183,12 @@ export function check_untouched(name: string, orig: string, out: string): void {
   }
 }
 
-export function check_wrapped(name: string, outText: string): void {
-  const lines = outText.split("\n");
-  for (const [, , t] of A.findTables(lines, MAX_WIDTH, 8)) {
-    for (const row of t.rows) {
-      if (row.cells.some((frags) => frags.length > 1)) return;
-    }
-  }
-  throw new Error(`wrapped_${name}: no multi-line rows produced`);
-}
 
 export function extract_galleries(text: string): Array<[string, number]> {
   const lines = text.split("\n");
   const galleries: Array<[string, number]> = [];
-  for (const [, , t] of A.findTables(lines, MAX_WIDTH, 8)) {
-    const header = t.header.map((c) => c.join(" "));
+  for (const [, , t] of A.findTables(lines, 8)) {
+    const header = t.header;
     let wcol = -1;
     for (let i = 0; i < header.length; i++) {
       if (header[i].toLowerCase() === "display width") {
@@ -240,8 +200,7 @@ export function extract_galleries(text: string): Array<[string, number]> {
     const tcol = header[0].toLowerCase() === "script" ? 1 : 0;
     if (tcol === wcol) continue;
     for (const row of t.rows) {
-      const cells = row.cells.map((c) => c.join(" "));
-      if (cells.length <= Math.max(tcol, wcol)) continue;
+      const cells = row.cells;
       const token = A.pyStrip(cells[tcol]);
       const raw = A.pyStrip(cells[wcol]);
       if (!/^\d+$/.test(raw)) continue;

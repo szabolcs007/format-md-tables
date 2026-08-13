@@ -21,7 +21,7 @@
 
 ## 2. Combining marks and complex scripts
 
-*Base and syllabic letters are 1 column; every combining mark — accents, matras, virama, nukta, shadda, niqqud, tone marks, vowel signs — adds 0. The aligner must count clusters without ever splitting or reordering the stack, and wrapping must keep every cluster intact.*
+*Base and syllabic letters are 1 column; every combining mark — accents, matras, virama, nukta, shadda, niqqud, tone marks, vowel signs — adds 0. The aligner must count clusters without splitting or reordering the stack.*
 
 | Script | Sample | Display width |
 | --- | --- | --- |
@@ -41,7 +41,7 @@
 
 ## 3. Zero-width characters
 
-*ZWSP (U+200B), word joiner (U+2060), soft hyphen (U+00AD), BOM (U+FEFF), and zero-width joiner (U+200D) all occupy 0 columns. They are still content: the aligner must neither count them nor merge or delete the letters around them, and a soft hyphen must never become a wrap point.*
+*ZWSP (U+200B), word joiner (U+2060), soft hyphen (U+00AD), BOM (U+FEFF), and zero-width joiner (U+200D) all occupy 0 columns. They are still content: the aligner must neither count them nor merge or delete the letters around them.*
 
 | Cell | Contains | Display width |
 | --- | --- | --- |
@@ -150,9 +150,9 @@ carol | 30 | extra | dropped
 | short | row |
 | one | two | three | four | five |
 
-## 9. Long mixed lines — wrap stress
+## 9. Long mixed lines — display-width alignment
 
-*These cells exceed the default 40-column width limit. This is a single-column table, and single-column tables never wrap (a wrapped cell's continuation lines would re-parse as new rows), so each cell stays on one line. The original codepoints must survive realignment.*
+*These cells are intentionally wide. The original codepoints must survive realignment without splitting or reordering.*
 
 | Mixed soup |
 | --- |

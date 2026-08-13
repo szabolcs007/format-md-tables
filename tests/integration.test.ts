@@ -11,8 +11,6 @@ import {
   check_alignment,
   check_content,
   check_untouched,
-  check_width_caps,
-  check_wrapped,
   readText,
   runCli,
 } from "./helpers.ts";
@@ -43,10 +41,8 @@ for (const name of FIXTURES) {
       expect(out).toBe(golden);
 
       check_alignment(name, out);
-      check_width_caps(name, out);
       check_content(name, orig, out);
       check_untouched(name, orig, out);
-      if (name === "wrapping.md") check_wrapped(name, out);
 
       // idempotency: second run byte-identical
       const r2 = await runCli([work]);

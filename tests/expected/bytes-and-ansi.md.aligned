@@ -1,8 +1,8 @@
 ﻿# Bytes and ANSI
 
-*BOM-bearing, CRLF file with ANSI-colored cells and a wrap case. The BOM, CRLF
-line endings, and every escape sequence must survive alignment; only the table
-grid may change. The harness asserts these byte-level properties.*
+*BOM-bearing, CRLF file with ANSI-colored cells and a long-cell case. The BOM,
+CRLF line endings, and every escape sequence must survive alignment; only the
+table grid may change. The harness asserts these byte-level properties.*
 
 ## 1. ANSI colors inside cells
 
@@ -16,19 +16,13 @@ raw text contains `\x1b[31m` etc. The reset code must stay attached to its text.
 | ok       | no styling at all |
 | [31m[0m         | ansi-only cell    |
 
-## 2. Wrapping a colored cell
+## 2. Long colored cell
 
-*This cell exceeds 40 columns with a color code mid-text; the wrap must keep
-each escape with the characters it styles and never split a cluster. Two
-columns so the wrap path is exercised (single-column tables never wrap).*
+*This cell is intentionally long and contains a color code mid-text; the complete cell must remain on one physical row and every escape must survive.*
 
-| Area        | Colored log                              |
-| ----------- | ---------------------------------------- |
-| app         | [32mstart green [0m then a very long unbroken   |
-|             | token                                    |
-|             | supercalifragilisticexpialidocious-      |
-|             | antidisestablishmentarianism             |
-|             | {ESC}[31mend red{ESC}[0m                 |
+| Area        | Colored log                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| app         | [32mstart green [0m then a very long unbroken token supercalifragilisticexpialidocious-antidisestablishmentarianism {ESC}[31mend red{ESC}[0m |
 
 ## 3. CRLF + mixed content
 

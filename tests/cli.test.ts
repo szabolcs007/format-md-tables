@@ -81,11 +81,10 @@ describe("cli", () => {
     }
   });
 
-  test("--max-width 0 keeps the column wide (no wrap)", async () => {
+  test("--max-width is removed and exits 2", async () => {
     const wide = "# T\n\n| a | " + "x".repeat(120) + " |\n| --- | --- |\n| c | d |\n";
     const r = await runCli(["--max-width", "0"], Buffer.from(wide, "utf-8"));
-    expect(r.code).toBe(0);
-    expect(r.stdout.includes("| " + "x".repeat(120) + " |")).toBe(true);
+    expect(r.code).toBe(2);
   });
 
   test("--tab-width 4 expands tab to 4-column stop", async () => {
@@ -133,19 +132,11 @@ describe("cli", () => {
   test("unambiguous option prefixes match argparse (allow_abbrev)", async () => {
     const tmp = tmpdir();
     try {
-      // --max-w 0 behaves like --max-width 0 (no wrap)
-      const wide = "# T\n\n| a | " + "x".repeat(120) + " |\n| --- | --- |\n| c | d |\n";
-      const r0 = await runCli(["--max-w", "0"], Buffer.from(wide, "utf-8"));
-      expect(r0.code).toBe(0);
-      expect(r0.stdout.includes("| " + "x".repeat(120) + " |")).toBe(true);
       // --ch behaves like --check (prefix-unique)
       const p = path.join(tmp, "t.md");
       fs.writeFileSync(p, SRC);
       const r2 = await runCli(["--ch", p]);
       expect(r2.code).toBe(1);
-      // single-dash long forms are rejected (argparse parity)
-      const r3 = await runCli(["-max-width", "0"], Buffer.from(wide, "utf-8"));
-      expect(r3.code).toBe(2);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
