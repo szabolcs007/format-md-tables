@@ -40,7 +40,16 @@ Requires [Bun ≥ 1.2](https://bun.sh). No build step; runs as TypeScript source
 
 ### As an omp skill
 
-If you use [Oh My Pi](https://github.com/oh-my-pi), the skill is installed at `~/.omp/agent/skills/format-md-tables/`. Invoke it via `skill://`:
+[Oh My Pi](https://github.com/can1357/oh-my-pi) discovers skills from `~/.omp/agent/skills/<name>/SKILL.md` — there is no installer; copy or symlink this directory there:
+
+```bash
+git clone https://github.com/szabolcs007/format-md-tables.git
+mkdir -p ~/.omp/agent/skills
+cp -r format-md-tables ~/.omp/agent/skills/format-md-tables
+# or symlink: ln -s "$(pwd)/format-md-tables" ~/.omp/agent/skills/format-md-tables
+```
+
+Then invoke it via `skill://`:
 
 ```bash
 bun skill://format-md-tables/format_md_tables.ts [options] FILE...
