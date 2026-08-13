@@ -2,6 +2,13 @@
   "name": "format-md-tables",
   "private": true,
   "type": "module",
-  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
-  "devDependencies": { "typescript": "^5", "@types/node": "^24", "bun-types": "^1" }
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "bun-types": "^1",
+    "typescript": "^5"
+  }
 }

@@ -5,7 +5,9 @@
     "moduleResolution": "bundler",
     "types": ["node", "bun-types"],
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["*.ts", "tests/*.ts"]
 }

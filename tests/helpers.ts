@@ -47,12 +47,12 @@ export async function runCli(
   });
   if (stdin !== undefined) {
     try {
-      proc.stdin.write(stdin);
+      proc.stdin!.write(stdin);
     } catch {
       // child may exit early on usage errors; ignore
     }
     try {
-      proc.stdin.end();
+      proc.stdin!.end();
     } catch {
       // already closed
     }
