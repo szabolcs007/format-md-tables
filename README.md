@@ -71,29 +71,21 @@ With no `FILE` arguments the input is read from stdin and the aligned result is 
 
 ### Options
 
-| Option          | Default     | Description                              |
-| --------------- | ----------- | ---------------------------------------- |
-| `FILE...`       | —           | Markdown files to align in place; omit   |
-|                 |             | to read stdin                            |
-| `--tab-width N` | 8           | Tab stop used when expanding tabs inside |
-|                 |             | cells                                    |
-| `--check`       | —           | Do not modify; exit 1 if any file would  |
-|                 |             | change                                   |
-| `--diff`        | —           | Print a unified diff to **stderr**; do   |
-|                 |             | not modify; exit 1 if any file would     |
-|                 |             | change                                   |
-| `--version`     | —           | Print version and exit                   |
+| Option          | Default     | Description                                                                         |
+| --------------- | ----------- | ----------------------------------------------------------------------------------- |
+| `FILE...`       | —           | Markdown files to align in place; omit to read stdin.                               |
+| `--tab-width N` | 8           | Tab stop used when expanding tabs inside cells.                                     |
+| `--check`       | —           | Do not modify; exit 1 if any file would change.                                     |
+| `--diff`        | —           | Print a unified diff to **stderr**; do not modify; exit 1 if any file would change. |
+| `--version`     | —           | Print version and exit.                                                             |
 
 ### Exit codes
 
-| Code    | Meaning                                  |
-| ------- | ---------------------------------------- |
-| `0`     | Success — no changes needed (or changes  |
-|         | applied in place)                        |
-| `1`     | Changes would be needed (`--check` /     |
-|         | `--diff`)                                |
-| `2`     | Usage or I/O error (bad option value,    |
-|         | unreadable file)                         |
+| Code    | Meaning                                                            |
+| ------- | ------------------------------------------------------------------ |
+| `0`     | Success — no changes needed or changes applied in place.           |
+| `1`     | Changes would be needed with `--check` or `--diff`.                |
+| `2`     | Usage or I/O error, such as a bad option value or unreadable file. |
 
 ## Long content
 
