@@ -1,4 +1,0 @@
-| col                                      |
-| ---------------------------------------- |
-| supercalifragilisticexpialidociousantidi |
-| sestablishmentarianism                   |

@@ -1,3 +1,7 @@
+[![CI](https://github.com/szabolcs007/format-md-tables/actions/workflows/ci.yml/badge.svg)](https://github.com/szabolcs007/format-md-tables/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Bun](https://img.shields.io/badge/Bun-%E2%89%A51.2-orange.svg)](https://bun.sh)
+
 # format-md-tables
 
 Markdown tables fall apart in terminals because the pipes are positioned by byte count, not display width: a single CJK ideograph, emoji sequence, or ANSI escape code shifts every vertical border below it. `format_md_tables` realigns markdown tables so every `|` sits at exactly the same display column in a monospace renderer, accounting for CJK ideographs, fullwidth forms, emoji ZWJ sequences, flags, skin-tone modifiers, keycaps, combining marks, zero-width characters, tabs, and ANSI escape codes inside the cells — and wraps over-wide cells so no column ever runs off the screen.
@@ -17,17 +21,30 @@ Markdown tables fall apart in terminals because the pipes are positioned by byte
 
 ## Installation
 
+### From source (recommended)
+
+```bash
+git clone https://github.com/szabolcs007/format-md-tables.git
+cd format-md-tables
+bun install
+
+# Run directly
+bun format_md_tables.ts [options] FILE...
+
+# Or add to PATH
+chmod +x format_md_tables.ts
+ln -s "$(pwd)/format_md_tables.ts" /usr/local/bin/format_md_tables
+```
+
+Requires [Bun ≥ 1.2](https://bun.sh). No build step; runs as TypeScript source. No third-party runtime dependencies.
+
 ### As an omp skill
 
-The skill is installed at `~/.omp/agent/skills/format-md-tables/`. Invoke it via `skill://`:
+If you use [Oh My Pi](https://github.com/oh-my-pi), the skill is installed at `~/.omp/agent/skills/format-md-tables/`. Invoke it via `skill://`:
 
 ```bash
 bun skill://format-md-tables/format_md_tables.ts [options] FILE...
 ```
-
-### Standalone
-
-Copy `format_md_tables.ts` to a directory on your `PATH`. Requires Bun ≥ 1.2; no third-party dependencies.
 
 ## Usage
 
