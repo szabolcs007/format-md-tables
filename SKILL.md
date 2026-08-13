@@ -13,19 +13,19 @@ description: Realign GFM table borders in markdown files. Use after creating or 
 
 ```bash
 # Format a file in place
-python skill://format-md-tables/format_md_tables.py path/to/file.md
+bun skill://format-md-tables/format_md_tables.ts path/to/file.md
 
 # Check without modifying (exit 1 if any file would change)
-python skill://format-md-tables/format_md_tables.py --check path/to/file.md
+bun skill://format-md-tables/format_md_tables.ts --check path/to/file.md
 
 # Print a unified diff to stderr without modifying (exit 1 if any file would change)
-python skill://format-md-tables/format_md_tables.py --diff path/to/file.md
+bun skill://format-md-tables/format_md_tables.ts --diff path/to/file.md
 
 # Disable column wrapping (default max width is 40 display columns)
-python skill://format-md-tables/format_md_tables.py --max-width 0 path/to/file.md
+bun skill://format-md-tables/format_md_tables.ts --max-width 0 path/to/file.md
 
 # With no file arguments: read stdin, write the aligned result to stdout
-cat file.md | python skill://format-md-tables/format_md_tables.py
+cat file.md | bun skill://format-md-tables/format_md_tables.ts
 ```
 
 Exit codes: 0 = success/no changes, 1 = changes needed (with `--check`/`--diff`), 2 = usage or I/O error.
@@ -61,4 +61,8 @@ Escaped pipes (`\|`), pipes inside inline code spans, blockquote prefixes, and m
 ## Verification
 
 - After running, visually verify your tables in a monospace renderer: alignment, wrapped continuation rows, and row counts — especially for wide or single-column tables.
-- The tool's own test suite (in `tests/`) validates the tool; run it only when you are changing `format_md_tables.py` itself, not to verify your tables.
+- The tool's own test suite (in `tests/`) validates the tool; run it only when you are changing `format_md_tables.ts` itself, not to verify your tables.
+
+## Requirements
+
+- Bun ≥ 1.2 — install: `curl -fsSL https://bun.sh/install | bash` on macOS/Linux, `powershell -c "irm bun.sh/install.ps1|iex"` on Windows.

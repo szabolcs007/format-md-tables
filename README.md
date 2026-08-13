@@ -22,34 +22,36 @@ Markdown tables fall apart in terminals because the pipes are positioned by byte
 The skill is installed at `~/.omp/agent/skills/format-md-tables/`. Invoke it via `skill://`:
 
 ```bash
-python skill://format-md-tables/format_md_tables.py [options] FILE...
+bun skill://format-md-tables/format_md_tables.ts [options] FILE...
 ```
 
 ### Standalone
 
-Copy `format_md_tables.py` to a directory on your `PATH`. Requires Python 3.8+; no third-party dependencies.
+Copy `format_md_tables.ts` to a directory on your `PATH`. Requires Bun ≥ 1.2; no third-party dependencies.
 
 ## Usage
 
 ```bash
 # Align files in place
-python format_md_tables.py file1.md file2.md
+bun format_md_tables.ts file1.md file2.md
 
 # Check without modifying (exit 1 if any file would change)
-python format_md_tables.py --check file.md
+bun format_md_tables.ts --check file.md
 
 # Show the unified diff without modifying — output goes to stderr (exit 1 if any file would change)
-python format_md_tables.py --diff file.md 2>&1
+bun format_md_tables.ts --diff file.md 2>&1
 
 # Disable wrapping entirely: columns grow as wide as their content
-python format_md_tables.py --max-width 0 file.md
+bun format_md_tables.ts --max-width 0 file.md
 
 # Set the tab stop used to expand tabs inside cells
-python format_md_tables.py --tab-width 4 file.md
+bun format_md_tables.ts --tab-width 4 file.md
 
 # Read from stdin, write the aligned result to stdout
-cat file.md | python format_md_tables.py > aligned.md
+cat file.md | bun format_md_tables.ts > aligned.md
 ```
+
+The skill runs as TypeScript source — no build step. Invoke it with `bun skill://format-md-tables/format_md_tables.ts [options] FILE...`.
 
 With no `FILE` arguments the input is read from stdin and the aligned result is written to stdout.
 
@@ -102,10 +104,10 @@ Wrapping happens per cell before padding, so a table stays a regular grid: conti
 
 ## Testing
 
-Run the harness from the repository root:
+Run the test suite from the repository root:
 
 ```bash
-python tests/run_tests.py [--update-goldens]
+bun test
 ```
 
 The harness validates invariants rather than a fixed assertion count (it is dynamic):
@@ -118,8 +120,6 @@ The harness validates invariants rather than a fixed assertion count (it is dyna
 *   **Idempotency** — re-running produces byte-identical output
 *   **Must-not-touch** — fenced code, HTML, math blocks, indented code
 *   **Golden comparisons** and **CLI behavior** — exit codes, stdin/stdout, `--check`, `--diff`
-
-`--update-goldens` regenerates the expected `.aligned` files when behavior intentionally changes.
 
 ## Known limitations
 

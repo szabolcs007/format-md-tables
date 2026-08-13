@@ -1,7 +1,0 @@
---- .work/crlf.md+++ .work/crlf.md (aligned)@@ -1,5 +1,5 @@ # T
- 
--| a | bb |
-+| a   | bb  |
- | --- | --- |
--| c | d |
-+| c   | d   |
