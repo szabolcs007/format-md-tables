@@ -49,7 +49,7 @@ cp -r format-md-tables ~/.omp/agent/skills/format-md-tables
 # or symlink: ln -s "$(pwd)/format-md-tables" ~/.omp/agent/skills/format-md-tables
 ```
 
-Then invoke it via `skill://`:
+Once installed, the LLM sees the skill's name and description at startup and will typically pick it up on its own whenever you edit markdown files containing tables. You can also invoke it directly via `skill://`:
 
 ```bash
 bun skill://format-md-tables/format_md_tables.ts [options] FILE...
