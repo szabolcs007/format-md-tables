@@ -1,0 +1,4 @@
+# This fixture must be CRLF on disk: the bytes test asserts that CRLF
+# line endings survive alignment unmixed. The blob stays LF (git
+# normalizes); eol=crlf forces CRLF into every checkout, on all platforms.
+tests/bytes-and-ansi.md eol=crlf
