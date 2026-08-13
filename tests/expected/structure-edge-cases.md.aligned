@@ -1,0 +1,240 @@
+# Table structure edge cases
+
+*This file is an input for the markdown table aligner. It stresses how tables
+are recognised: escaped pipes, pipes inside code spans, delimiter variants,
+ragged rows, and near-table constructs that must never be touched.*
+
+## Escaped pipes
+
+*A pipe preceded by a backslash is cell content, not a separator. Each row
+below has exactly two cells; the escaped pipes must survive with the backslash
+consumed and the pipe kept.*
+
+| left     | right         |
+| -------- | ------------- |
+| a \| b   | c             |
+| plain    | d \| e \| f   |
+
+## Pipes inside inline code spans
+
+*A pipe between backticks is cell content even when it is not escaped. Note:
+strict cmark-gfm would split the cell here, but this fixture pins the
+aligner's intended contract — code-span pipes are content.*
+
+| command           | meaning                           |
+| ----------------- | --------------------------------- |
+| `cut -d'|' -f1`   | splits on pipe                    |
+| `x|y`             | pipe inside code                  |
+| `a \| b`          | escaped pipe inside a code span   |
+
+## Pipes inside URLs and link destinations
+
+*These pipes are NOT escaped and NOT inside a code span, so strict GFM treats
+them as cell separators: the row comes out wider than the delimiter and the
+extra cells are dropped. The aligner must pick one consistent treatment and
+must never corrupt the rest of the file.*
+
+| site   | url                       |
+| ------ | ------------------------- |
+| ex     | https://ex.com/a          |
+| ex2    | [label](https://ex.com/a  |
+
+## All delimiter styles
+
+*Every alignment variant must be recognised: default, left, center, right, and
+a single-dash delimiter. Delimiter rows are structural — the aligner never
+modifies them, including the padded variant below.*
+
+| a      | b        | c       | d       |
+| :----- | :------: | ------: | ------- |
+| 1      | 2        | 3       | 4       |
+| left   | center   | right   | plain   |
+
+| single dash   |
+| ------------- |
+| one column    |
+
+| padded    | cells    |
+| :-------: | -------- |
+| 5         | 6        |
+
+## No leading or trailing pipes
+
+*GFM allows rows that omit the outer pipes; the delimiter row still defines the
+column count.*
+
+a    | b     | c   
+---- | ----- | ----
+1    | 2     | 3   
+4    | 5     | 6   
+
+name    | amount 
+:------ | ------:
+apples  | 12     
+pears   | 7      
+
+## Ragged rows: fewer cells than the delimiter
+
+*GFM pads short rows with empty cells; the aligner must keep the column count
+for every row.*
+
+| a     | b     | c     |
+| ----- | ----- | ----- |
+| 1     | 2     | 3     |
+| 4     | 5     |       |
+| 6     |       |       |
+
+## Ragged rows: more cells than the delimiter
+
+*GFM drops the extra cells; the aligner must not reflow the surplus into new
+columns.*
+
+| a     | b     |
+| ----- | ----- |
+| 1     | 2     |
+| 5     | 6     |
+
+## Single-column table
+
+*One column, with outer pipes. Without the pipes this would degrade into a
+setext heading — see the near-tables section.*
+
+| only   |
+| ------ |
+| one    |
+| two    |
+
+## Two-column table with a giant second column
+
+*The second column dwarfs the first; padding must not distort the tiny first
+column beyond its content.*
+
+| id        | payload                                  |
+| --------- | ---------------------------------------- |
+| 1         | This payload column is deliberately      |
+|           | much, much wider than the id column,     |
+|           | exercising a large width difference      |
+|           | between adjacent columns in a two-column |
+|           | table                                    |
+
+## Header row with fewer cells than the delimiter
+
+*Strict GFM requires the header row and the delimiter row to agree on the
+number of cells. Both mismatches below are therefore NOT tables — they are
+paragraphs and must be left byte-for-byte untouched.*
+
+| lone |
+| --- | --- |
+| 1 | 2 |
+
+| left | right |
+| --- |
+| 1 | 2 |
+
+## Placement: hard against a heading and a paragraph
+
+*A table may sit directly below a heading and directly above a paragraph line;
+neither the heading nor the paragraph is absorbed into the table.*
+
+### Instrument readings
+| sensor   | value    |
+| -------- | -------- |
+| t1       | 21.5     |
+| t2       | 19.0     |
+The readings above were taken at noon.
+
+## Pipe inside a code span in the header cell
+
+*A header cell can contain a code span with a pipe; the delimiter row still
+defines two columns.*
+
+| `a|b`   | c       |
+| ------- | ------- |
+| 1       | 2       |
+
+## Row that is only empty cells
+
+*`| | | |` is a body row of four empty cells — not a delimiter, not a comment,
+and not a gap in the table.*
+
+| a     | b     | c     | d     |
+| ----- | ----- | ----- | ----- |
+|       |       |       |       |
+| 1     | 2     | 3     | 4     |
+
+## A table with 20+ columns
+
+*24 columns: the widest table in this fixture. Column count and cell
+correspondence must survive.*
+
+| c1    | c2    | c3    | c4    | c5    | c6    | c7    | c8    | c9    | c10   | c11   | c12   | c13   | c14   | c15   | c16   | c17   | c18   | c19   | c20   | c21   | c22   | c23   | c24   |
+| ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
+| 1     | 2     | 3     | 4     | 5     | 6     | 7     | 8     | 9     | 10    | 11    | 12    | 13    | 14    | 15    | 16    | 17    | 18    | 19    | 20    | 21    | 22    | 23    | 24    |
+
+## A table with a 200+ character cell
+
+*One cell longer than 200 characters must survive intact.*
+
+| kind      | content                                  |
+| --------- | ---------------------------------------- |
+| long      | lorem ipsum dolor sit amet consectetur   |
+|           | adipiscing elit sed do eiusmod tempor    |
+|           | incididunt ut labore et dolore magna     |
+|           | aliqua ut enim ad minim veniam quis      |
+|           | nostrud exercitation ullamco laboris     |
+|           | nisi ut aliquip ex ea commodo consequat  |
+|           | duis aute irure dolor in reprehenderit   |
+|           | in voluptate velit esse cillum dolore eu |
+|           | fugiat nulla pariatur excepteur sint     |
+|           | occaecat cupidatat non proident sunt in  |
+|           | culpa qui officia deserunt mollit anim   |
+|           | id est laborum                           |
+
+## Near-tables that must never be touched
+
+*These lines look like table fragments but are not tables under GFM — there is
+no header+delimiter pair with matching column counts. The aligner must leave
+every line below untouched, including the indented block (indented code) and
+the fenced block (code) that merely contain pipe characters.*
+
+| this line has pipes but no delimiter row after it
+just | some | paragraph | text
+| also | without | any | delimiter
+four | five | six | seven | eight
+
+| --- | --- | --- |
+
+    | indented | table |
+    | --- | --- |
+    | not | a | table |
+
+```markdown
+| fenced | table |
+| --- | --- |
+| is | code |
+```
+
+## No-space tables
+
+*Pipes without padding spaces are still valid GFM tables.*
+
+| a   | b   |
+| --- | --- |
+| c   | d   |
+
+## End of file: table with no trailing newline
+
+*This file ends here with a table whose last line has NO trailing newline. The
+final row must still be recognised and aligned.*
+
+| last   | line      |
+| ------ | --------- |
+| no     | newline   |
+## GFM minimum delimiter
+
+*The delimiter cell may be a single dash per GFM; the aligner must accept it and pad it out.
+This table is deliberately left with the separator row in its raw one-dash form.*
+
+| a   | b   |
+| --- | --- |
+| 1   | 2   |

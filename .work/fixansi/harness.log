@@ -1,0 +1,218 @@
+== width model ==
+width model ground truth
+  PASS  width '👨\u200d👩\u200d👧\u200d👦' == 2
+  PASS  width '👨\u200d👩\u200d👧\u200d👦👨\u200d👩\u200d👧\u200d👦' == 4
+  PASS  width '🇭🇺' == 2
+  PASS  width '🇭' == 2
+  PASS  width '👍🏽' == 2
+  PASS  width '🧑🏿\u200d🦰' == 2
+  PASS  width '1️⃣' == 2
+  PASS  width '⭐' == 2
+  PASS  width '⭐️' == 2
+  PASS  width '☀' == 1
+  PASS  width '☀️' == 2
+  PASS  width 'é' == 1
+  PASS  width 'é̂' == 1
+  PASS  width '\u200b' == 0
+  PASS  width '\u2060' == 0
+  PASS  width '\xad' == 0
+  PASS  width '\ufeff' == 0
+  PASS  width '\u200d' == 0
+  PASS  width '️' == 0
+  PASS  width '中文' == 4
+  PASS  width 'Ａ' == 2
+  PASS  width 'ｶ' == 1
+  PASS  width '한' == 2
+  PASS  width 'ᄀ' == 2
+  PASS  width 'ᅡ' == 1
+  PASS  width '！' == 2
+  PASS  width '─' == 1
+  PASS  width '│' == 1
+  PASS  width '→' == 1
+  PASS  width '✂' == 1
+  PASS  width '➜' == 1
+  PASS  width '𝐀' == 1
+  PASS  width '𝄞' == 1
+  PASS  width '𠀀' == 2
+  PASS  width 'नमस्ते' == 4
+  PASS  width '्' == 0
+  PASS  width '\x1b[31mred\x1b[0m' == 3
+  PASS  width '\t' == 8
+  PASS  width 'a\tb' == 9
+== fixtures ==
+-- unicode-width.md
+  PASS  gallery unicode-width.md: no gallery tables (skipped)
+  PASS  golden unicode-width.md: matches
+  FAIL  alignment_unicode-width.md
+        line '|  👨\u200d👩\u200d👧\u200d👦             |  2              |' pipes [0, 24, 42] != [0, 18, 36]
+  FAIL  width_caps_unicode-width.md
+        fragment ' 中文漢字カタカナひらがな한글             ' (42) wider than column 40
+  FAIL  content_unicode-width.md
+        table 9 differs:
+          input : (1, ('n',), ('Mixed soup',), (('中文漢字カタカナひらがな한글 ＡＢＣ１２３ سلام שלום สวัสดี tiếng Việt 𝐀𝐁𝐂 𝄞 𠀀 ✂ ➜ → │ ─ ┼ 👨\u200d👩\u200d👧\u200d👦 🇭🇺 👍🏽 1️⃣ ⭐️',), ('汉字测试宽度计算中文字符串宽度非常长的连续中文字符串没有任何空格可以断行只能逐字换行',), ('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789',)))
+          output: (1, ('n',), ('Mixed soup',), (('中文漢字カタカナひらがな한글',), ('ＡＢＣ１２３سلامשלוםสวัสดีtiếngViệt',), ('𝐀𝐁𝐂𝄞𠀀✂➜→│─┼👨\u200d👩\u200d👧\u200d👦🇭🇺👍🏽1️⃣⭐️',), ('汉字测试宽度计算中文字符串宽度非常长的连',), ('续中文字符串没有任何空格可以断行只能逐字',), ('换行',), ('abcdefghijklmnopqrstuvwxyz',), ('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',)))
+  PASS  untouched unicode-width.md: all non-table lines byte-exact
+  FAIL  idempotency_unicode-width.md
+        second run changed the file
+-- emoji-hell.md
+  PASS  gallery emoji-hell.md: no gallery tables (skipped)
+  PASS  golden emoji-hell.md: matches
+  FAIL  alignment_emoji-hell.md
+        line '|  👨\u200d👩\u200d👧\u200d👦           |  family: man, woman, girl, boy        |' pipes [0, 22, 62] != [0, 16, 56]
+  FAIL  width_caps_emoji-hell.md
+        fragment '  Hungary                                ' (41) wider than column 40
+  FAIL  content_emoji-hell.md
+        table 6 differs:
+          input : (1, ('n',), ('Status log',), (('更新完成✅ 已部署🚀 运行正常❤️ 中文测试👍 カタカナ⛄️ 次のステップ➡️ 汉字宽度必须正确计算',), ('👨\u200d👩\u200d👧\u200d👦 👨\u200d👩\u200d👧\u200d👦 🇭🇺 🇩🇪 🇯🇵 👍🏽 🧑🏿\u200d🦰 1️⃣ 2️⃣ ⭐️ ❤️ ☀️ 👩\u200d💻 🐻\u200d❄️ 🦸🏾\u200d♀️ 👨\u200d🍳 👨\u200d❤️\u200d👨 ❤️\u200d🔥 ❤️\u200d🩹 👁️\u200d🗨️ 😶\u200d🌫️',), ('汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字',)))
+          output: (1, ('n',), ('Status log',), (('更新完成✅已部署🚀运行正常❤️',), ('中文测试👍カタカナ⛄️次のステップ➡️',), ('汉字宽度必须正确计算',), ('👨\u200d👩\u200d👧\u200d👦👨\u200d👩\u200d👧\u200d👦🇭🇺🇩🇪🇯🇵👍🏽🧑🏿\u200d🦰1️⃣2️⃣⭐️❤️☀️👩\u200d💻',), ('🐻\u200d❄️🦸🏾\u200d♀️👨\u200d🍳👨\u200d❤️\u200d👨❤️\u200d🔥❤️\u200d🩹👁️\u200d🗨️😶\u200d🌫️',), ('汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字',), ('汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字',), ('汉字汉字汉字汉字',)))
+  PASS  untouched emoji-hell.md: all non-table lines byte-exact
+  FAIL  idempotency_emoji-hell.md
+        second run changed the file
+-- wrapping.md
+  PASS  gallery wrapping.md: no gallery tables (skipped)
+  PASS  golden wrapping.md: matches
+  FAIL  alignment_wrapping.md
+        line '|  family    |  👨\u200d👩\u200d👧\u200d👦                                      |' pipes [0, 13, 62] != [0, 13, 56]
+  FAIL  width_caps_wrapping.md
+        fragment '  supercalifragilisticexpialidocious      ' (42) wider than column 40
+  FAIL  content_wrapping.md
+        table 0 differs:
+          input : (2, ('n', 'n'), ('word', 'length'), (('supercalifragilisticexpialidocious', '34'), ('antidisestablishmentarianism', '28'), ('pneumonoultramicroscopicsilicovolcanoconiosis', '45'), ('floccinaucinihilipilification', '29'), ('supercalifragilisticexpialidociousantidisestablishmentarianism', '62'), ('floccinaucinihilipilificationsupercalifragilisticexpialidociousantidisestablishmentarianism', '91')))
+          output: (2, ('n', 'n'), ('word', 'length'), (('supercalifragilisticexpialidocious', '34'), ('antidisestablishmentarianism', '28'), ('pneumonoultramicroscopicsilicovolcanocon', '45'), ('iosis', ''), ('floccinaucinihilipilification', '29'), ('supercalifragilisticexpialidociousantidi', '62'), ('sestablishmentarianism', ''), ('floccinaucinihilipilificationsupercalifr', '91'), ('agilisticexpialidociousantidisestablishm', ''), ('entarianism', '')))
+  PASS  untouched wrapping.md: all non-table lines byte-exact
+  FAIL  wrapped_wrapping.md
+        no multi-line rows produced
+  FAIL  idempotency_wrapping.md
+        second run changed the file
+-- structure-edge-cases.md
+  PASS  gallery structure-edge-cases.md: no gallery tables (skipped)
+  PASS  golden structure-edge-cases.md: matches
+  FAIL  alignment_structure-edge-cases.md
+        line "|  `cut -d'|' -f1`  |  splits on pipe                   |" pipes [0, 11, 20, 56] != [0, 20, 56]
+  FAIL  width_caps_structure-edge-cases.md
+        fragment ' Thispayloadcolumnisdeliberately          ' (42) wider than column 40
+  FAIL  content_structure-edge-cases.md
+        table 11 differs:
+          input : (2, ('n', 'n'), ('id', 'payload'), (('1', 'This payload column is deliberately much, much wider than the id column, exercising a large width difference between adjacent columns in a two-column table'),))
+          output: (2, ('n', 'n'), ('id', 'payload'), (('1', 'Thispayloadcolumnisdeliberately'), ('', 'much,muchwiderthantheidcolumn,'), ('', 'exercisingalargewidthdifference'), ('', 'betweenadjacentcolumnsinatwo-column'), ('', 'table')))
+  PASS  untouched structure-edge-cases.md: all non-table lines byte-exact
+  FAIL  idempotency_structure-edge-cases.md
+        second run changed the file
+-- blockquotes.md
+  PASS  gallery blockquotes.md: no gallery tables (skipped)
+  PASS  golden blockquotes.md: matches
+  PASS  alignment blockquotes.md: all tables pixel-aligned
+  PASS  width caps blockquotes.md: no column exceeds 40
+  PASS  content blockquotes.md: 13 tables preserved
+  PASS  untouched blockquotes.md: all non-table lines byte-exact
+  FAIL  idempotency_blockquotes.md
+        second run changed the file
+-- must-not-touch.md
+  PASS  gallery must-not-touch.md: no gallery tables (skipped)
+  PASS  must-not-touch must-not-touch.md: byte-identical
+-- preserve.md
+  PASS  gallery preserve.md: no gallery tables (skipped)
+  PASS  golden preserve.md: matches
+  FAIL  alignment_preserve.md
+        line '|  `x|y`    |  inline code pipe  |' pipes [0, 5, 12, 33] != [0, 12, 33]
+  FAIL  width_caps_preserve.md
+        fragment ' thisisalongishcellthatsomeone            ' (42) wider than column 40
+  FAIL  content_preserve.md
+        table 5 differs:
+          input : (3, ('l', 'l', 'l'), ('col1', 'col2', 'col3'), (('rowA', 'this is a longish cell that someone wrapped', ''), ('', 'by hand onto a second physical line', 'tail'), ('rowB', 'short', 'end')))
+          output: (3, ('l', 'l', 'l'), ('col1', 'col2', 'col3'), (('rowA', 'thisisalongishcellthatsomeone', ''), ('', 'wrapped', ''), ('', 'by hand onto a second physical line', 'tail'), ('rowB', 'short', 'end')))
+  PASS  untouched preserve.md: all non-table lines byte-exact
+  FAIL  idempotency_preserve.md
+        second run changed the file
+-- bytes-and-ansi.md
+  PASS  gallery bytes-and-ansi.md: no gallery tables (skipped)
+  PASS  golden bytes-and-ansi.md: matches
+  PASS  alignment bytes-and-ansi.md: all tables pixel-aligned
+  PASS  width caps bytes-and-ansi.md: no column exceeds 40
+  FAIL  content_bytes-and-ansi.md
+        table count 3 -> 0
+  PASS  untouched bytes-and-ansi.md: all non-table lines byte-exact
+  FAIL  idempotency_bytes-and-ansi.md
+        second run changed the file
+== must-not-touch ==
+  PASS  must-not-touch: byte-identical
+== bytes & ansi ==
+  PASS  bytes: BOM preserved
+  FAIL  bytes
+        mixed line endings produced
+  FAIL  alignment_bytes-and-ansi.md
+        line '|  \x1b[31mERROR\x1b[0m     |  something failed   |\r\r' pipes [0, 20, 42] != [0, 13, 35]
+  FAIL  content_bytes-and-ansi.md
+        table 1 differs:
+          input : (1, ('n',), ('Colored log',), (('\x1b[32mstart green \x1b[0m then a very long unbroken token supercalifragilisticexpialidocious-antidisestablishmentarianism {ESC}[31mend red{ESC}[0m',),))
+          output: (1, ('n',), ('Colored log',), (('\x1b[32mstartgreen\x1b[0mthenaverylongunbroken',), ('token',), ('supercalifragilisticexpialidocious-',), ('antidisestablishmentarianism',), ('{ESC}[31mendred{ESC}[0m',)))
+  PASS  bytes: ANSI escapes preserved
+  FAIL  bytes
+        CRLF output not idempotent
+  FAIL  bytes
+        final newline added
+  PASS  bytes: LF stays LF
+== cli ==
+  PASS  cli: --check exit 1 on unaligned
+  PASS  cli: --check does not modify
+  FAIL  cli_check2
+        --check on aligned file: rc=1
+  FAIL  cli_diff
+        --diff rc=1
+  FAIL  cli_diff2
+        --diff on unaligned rc=2
+  FAIL  cli_stdin
+        stdin output differs from file output
+  FAIL  cli_nowrap
+        max-width 0 did not keep single-line cell
+  PASS  cli: missing file exit 2
+  PASS  cli: invalid utf-8 exit 2
+
+75 passed, 34 failed
+FAILURES:
+  - alignment_unicode-width.md: line '|  👨\u200d👩\u200d👧\u200d👦             |  2              |' pipes [0, 24, 42] != [0, 18, 36]
+  - width_caps_unicode-width.md: fragment ' 中文漢字カタカナひらがな한글             ' (42) wider than column 40
+  - content_unicode-width.md: table 9 differs:
+  input : (1, ('n',), ('Mixed soup',), (('中文漢字カタカナひらがな한글 ＡＢＣ１２３ سلام שלום สวัสดี tiếng Việt 𝐀𝐁𝐂 𝄞 𠀀 ✂ ➜ → │ ─ ┼ 👨\u200d👩\u200d👧\u200d👦 🇭🇺 👍🏽 1️⃣ ⭐️',), ('汉字测试宽度计算中文字符串宽度非常长的连续中文字符串没有任何空格可以断行只能逐字换行',), ('abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789',)))
+  output: (1, ('n',), ('Mixed soup',), (('中文漢字カタカナひらがな한글',), ('ＡＢＣ１２３سلامשלוםสวัสดีtiếngViệt',), ('𝐀𝐁𝐂𝄞𠀀✂➜→│─┼👨\u200d👩\u200d👧\u200d👦🇭🇺👍🏽1️⃣⭐️',), ('汉字测试宽度计算中文字符串宽度非常长的连',), ('续中文字符串没有任何空格可以断行只能逐字',), ('换行',), ('abcdefghijklmnopqrstuvwxyz',), ('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',)))
+  - idempotency_unicode-width.md: second run changed the file
+  - alignment_emoji-hell.md: line '|  👨\u200d👩\u200d👧\u200d👦           |  family: man, woman, girl, boy        |' pipes [0, 22, 62] != [0, 16, 56]
+  - width_caps_emoji-hell.md: fragment '  Hungary                                ' (41) wider than column 40
+  - content_emoji-hell.md: table 6 differs:
+  input : (1, ('n',), ('Status log',), (('更新完成✅ 已部署🚀 运行正常❤️ 中文测试👍 カタカナ⛄️ 次のステップ➡️ 汉字宽度必须正确计算',), ('👨\u200d👩\u200d👧\u200d👦 👨\u200d👩\u200d👧\u200d👦 🇭🇺 🇩🇪 🇯🇵 👍🏽 🧑🏿\u200d🦰 1️⃣ 2️⃣ ⭐️ ❤️ ☀️ 👩\u200d💻 🐻\u200d❄️ 🦸🏾\u200d♀️ 👨\u200d🍳 👨\u200d❤️\u200d👨 ❤️\u200d🔥 ❤️\u200d🩹 👁️\u200d🗨️ 😶\u200d🌫️',), ('汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字',)))
+  output: (1, ('n',), ('Status log',), (('更新完成✅已部署🚀运行正常❤️',), ('中文测试👍カタカナ⛄️次のステップ➡️',), ('汉字宽度必须正确计算',), ('👨\u200d👩\u200d👧\u200d👦👨\u200d👩\u200d👧\u200d👦🇭🇺🇩🇪🇯🇵👍🏽🧑🏿\u200d🦰1️⃣2️⃣⭐️❤️☀️👩\u200d💻',), ('🐻\u200d❄️🦸🏾\u200d♀️👨\u200d🍳👨\u200d❤️\u200d👨❤️\u200d🔥❤️\u200d🩹👁️\u200d🗨️😶\u200d🌫️',), ('汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字',), ('汉字汉字汉字汉字汉字汉字汉字汉字汉字汉字',), ('汉字汉字汉字汉字',)))
+  - idempotency_emoji-hell.md: second run changed the file
+  - alignment_wrapping.md: line '|  family    |  👨\u200d👩\u200d👧\u200d👦                                      |' pipes [0, 13, 62] != [0, 13, 56]
+  - width_caps_wrapping.md: fragment '  supercalifragilisticexpialidocious      ' (42) wider than column 40
+  - content_wrapping.md: table 0 differs:
+  input : (2, ('n', 'n'), ('word', 'length'), (('supercalifragilisticexpialidocious', '34'), ('antidisestablishmentarianism', '28'), ('pneumonoultramicroscopicsilicovolcanoconiosis', '45'), ('floccinaucinihilipilification', '29'), ('supercalifragilisticexpialidociousantidisestablishmentarianism', '62'), ('floccinaucinihilipilificationsupercalifragilisticexpialidociousantidisestablishmentarianism', '91')))
+  output: (2, ('n', 'n'), ('word', 'length'), (('supercalifragilisticexpialidocious', '34'), ('antidisestablishmentarianism', '28'), ('pneumonoultramicroscopicsilicovolcanocon', '45'), ('iosis', ''), ('floccinaucinihilipilification', '29'), ('supercalifragilisticexpialidociousantidi', '62'), ('sestablishmentarianism', ''), ('floccinaucinihilipilificationsupercalifr', '91'), ('agilisticexpialidociousantidisestablishm', ''), ('entarianism', '')))
+  - wrapped_wrapping.md: no multi-line rows produced
+  - idempotency_wrapping.md: second run changed the file
+  - alignment_structure-edge-cases.md: line "|  `cut -d'|' -f1`  |  splits on pipe                   |" pipes [0, 11, 20, 56] != [0, 20, 56]
+  - width_caps_structure-edge-cases.md: fragment ' Thispayloadcolumnisdeliberately          ' (42) wider than column 40
+  - content_structure-edge-cases.md: table 11 differs:
+  input : (2, ('n', 'n'), ('id', 'payload'), (('1', 'This payload column is deliberately much, much wider than the id column, exercising a large width difference between adjacent columns in a two-column table'),))
+  output: (2, ('n', 'n'), ('id', 'payload'), (('1', 'Thispayloadcolumnisdeliberately'), ('', 'much,muchwiderthantheidcolumn,'), ('', 'exercisingalargewidthdifference'), ('', 'betweenadjacentcolumnsinatwo-column'), ('', 'table')))
+  - idempotency_structure-edge-cases.md: second run changed the file
+  - idempotency_blockquotes.md: second run changed the file
+  - alignment_preserve.md: line '|  `x|y`    |  inline code pipe  |' pipes [0, 5, 12, 33] != [0, 12, 33]
+  - width_caps_preserve.md: fragment ' thisisalongishcellthatsomeone            ' (42) wider than column 40
+  - content_preserve.md: table 5 differs:
+  input : (3, ('l', 'l', 'l'), ('col1', 'col2', 'col3'), (('rowA', 'this is a longish cell that someone wrapped', ''), ('', 'by hand onto a second physical line', 'tail'), ('rowB', 'short', 'end')))
+  output: (3, ('l', 'l', 'l'), ('col1', 'col2', 'col3'), (('rowA', 'thisisalongishcellthatsomeone', ''), ('', 'wrapped', ''), ('', 'by hand onto a second physical line', 'tail'), ('rowB', 'short', 'end')))
+  - idempotency_preserve.md: second run changed the file
+  - content_bytes-and-ansi.md: table count 3 -> 0
+  - idempotency_bytes-and-ansi.md: second run changed the file
+  - bytes: mixed line endings produced
+  - alignment_bytes-and-ansi.md: line '|  \x1b[31mERROR\x1b[0m     |  something failed   |\r\r' pipes [0, 20, 42] != [0, 13, 35]
+  - content_bytes-and-ansi.md: table 1 differs:
+  input : (1, ('n',), ('Colored log',), (('\x1b[32mstart green \x1b[0m then a very long unbroken token supercalifragilisticexpialidocious-antidisestablishmentarianism {ESC}[31mend red{ESC}[0m',),))
+  output: (1, ('n',), ('Colored log',), (('\x1b[32mstartgreen\x1b[0mthenaverylongunbroken',), ('token',), ('supercalifragilisticexpialidocious-',), ('antidisestablishmentarianism',), ('{ESC}[31mendred{ESC}[0m',)))
+  - bytes: CRLF output not idempotent
+  - bytes: final newline added
+  - cli_check2: --check on aligned file: rc=1
+  - cli_diff: --diff rc=1
+  - cli_diff2: --diff on unaligned rc=2
+  - cli_stdin: stdin output differs from file output
+  - cli_nowrap: max-width 0 did not keep single-line cell

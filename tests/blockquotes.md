@@ -1,0 +1,113 @@
+# Tables inside blockquotes
+
+*This file is an input for the markdown table aligner. It stresses tables whose
+lines carry blockquote markers. The `> ` and `> > ` prefixes are the supported
+core; deeper nesting is included as a must-not-corrupt probe. Blockquote prose
+and code lines must never be absorbed into a table.*
+
+## One table in a blockquote
+
+*Every line of the table carries the `> ` prefix.*
+
+> | name | value |
+> | --- | --- |
+> | alpha | 1 |
+> | beta | 2 |
+
+## Nested blockquote table
+
+*The `> > ` two-level prefix form.*
+
+> > | x | y |
+> > | --- | --- |
+> > | 1 | 2 |
+
+## Blockquote prose plus a table
+
+*Prose and table share one blockquote; the prose stays a paragraph and the
+table starts at its delimiter row.*
+
+> Here is a sentence of prose inside the same blockquote as the table below.
+> | item | qty |
+> | --- | --- |
+> | bolts | 12 |
+> | nuts | 5 |
+
+## Two tables in one blockquote
+
+*Separated by an empty blockquote line.*
+
+> | first | table |
+> | --- | --- |
+> | a | 1 |
+>
+> | second | table |
+> | --- | --- |
+> | b | 2 |
+
+## Table followed by a code line in the blockquote
+
+*An indented code line (`> ` plus four spaces) inside the blockquote is a code
+block, not a table row — the table must end before it.*
+
+> | a | b |
+> | --- | --- |
+> | 1 | 2 |
+>     print("done")
+
+## Blockquote marker without a space
+
+*`>|` with no space after the marker is still a valid blockquote containing a
+table.*
+
+>| p | q |
+>| --- | --- |
+>| 5 | 6 |
+
+## Escaped pipes inside a blockquote table
+
+*Escaping still applies when the table lives inside a blockquote.*
+
+> | a \| b | c |
+> | --- | --- |
+> | 1 | 2 |
+
+## A blockquote table followed by a top-level table
+
+*The blockquote table must not merge with the top-level table that follows
+it.*
+
+> | inside | quote |
+> | --- | --- |
+> | yes | true |
+
+| outside | quote |
+| --- | --- |
+| no | false |
+
+## Mixed prefix rows
+
+*One table all-prefixed (valid), and one table whose rows mix `> `-prefixed and
+unprefixed lines. The mixed form is intentionally messy: strict GFM ends the
+blockquote at the first unprefixed line, so the header and delimiter end up
+with no body rows inside the quote. Every line below must keep its exact prefix
+and content — the aligner must not invent or remove prefixes.*
+
+> | keep | aligned |
+> | --- | --- |
+> | this | row |
+
+> | a | b |
+> | --- | --- |
+> | 1 | 2 |
+| 3 | 4 |
+> | 5 | 6 |
+
+## Beyond the supported depth
+
+*`> > > ` is three levels of nesting. Blockquote tables at any depth are
+supported: the prefix is preserved on every line and the table aligns.*
+
+> > > | deep | table |
+> > > | --- | --- |
+> > > | 1 | 2 |

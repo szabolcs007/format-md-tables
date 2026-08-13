@@ -1,0 +1,145 @@
+# preserve.md
+
+*Mixed document for the aligner: several real GFM tables below must be re-aligned so the `|` borders line up in a monospace renderer, while every non-table construct in this file passes through byte-identical.*
+
+## 1. First table — deliberately sloppy spacing
+
+English prose introducing the first table. Cell padding here is a mess on purpose: the aligner must re-space every cell while leaving the surrounding prose alone.
+
+| left             | center   | right   |
+| :--------------- | :------: | ------: |
+| a                | b        | c       |
+| much longer cell | x        | y       |
+| z                | w        | v       |
+
+*The table above must be aligned; the italic note and the headings around it must not move.*
+
+## 2. Idempotency target — already perfect
+
+A table that is already aligned exactly to the single-space-padding convention, with every cell — including the delimiter — padded to the column width. A correct aligner must leave it byte-identical, so repeated runs cause no churn.
+
+| name    | qty  |
+| :------ | ---: |
+| apples  | 3    |
+| bananas | 12   |
+
+## 3. English prose, then a Hungarian section
+
+Some English filler so the tables are always surrounded by real prose, then a Hungarian paragraph. The accented characters and the sentences must survive alignment untouched.
+
+Itt egy magyar bekezdés, amely a táblázatok között szerepel: az ékezetes betűknek érintetlenül kell maradniuk, miközben a környező táblázatok igazodnak.
+
+| Név        | Érték      | Megjegyzés     |
+| :--------- | ---------: | :------------- |
+| alma       | 12         | gyümölcs       |
+| körte      | 4          | édes is        |
+| őszibarack | 3          | nyári gyümölcs |
+
+*Hungarian table: the display widths of á, é, í, ó, ö, ő, ú, ű must each be counted as 1.*
+
+## 4. Table flush against a heading and a paragraph
+
+No blank line separates the heading from the table, nor the table from the paragraph below it. All three constructs are valid markdown and must survive apart from cell padding.
+
+### Measurements
+| metric     | value   |
+| :--------- | ------: |
+| latency    | 12ms    |
+| throughput | 900     |
+This paragraph starts immediately after the last table row; it has no pipe and must stay a paragraph.
+
+## 5. Mixed pipe styles within one table
+
+Some rows keep both border pipes, some drop them — one logical table must be re-rendered consistently.
+
+| one   | two   |
+| ----- | ----- |
+| three | four  |
+| five  | six   |
+| seven | eight |
+
+*All four body rows belong to the same table; the aligner must treat them as one unit.*
+
+## 6. Trailing spaces on some rows
+
+Some rows end with spaces after the final pipe (rows 1 and 3). The aligner must make one deliberate, consistent choice for trailing whitespace.
+
+| a | b |   
+| c | d |
+| e | f |  
+
+## 7. Hand-made wrapped row
+
+One logical row was wrapped by hand: the continuation line starts with an empty first cell. The aligner must re-parse and re-render this table correctly — the continuation belongs to the previous row, not a row of its own.
+
+| col1   | col2                                     | col3   |
+| :----- | :--------------------------------------- | :----- |
+| rowA   | this is a longish cell that someone      |        |
+|        | wrapped                                  | tail   |
+|        | by hand onto a second physical line      |        |
+| rowB   | short                                    | end    |
+
+*If the aligner re-wraps this table the join must be lossless; the two physical lines must be handled as one logical row.*
+
+## 8. Escaped pipes and inline-code pipes are cell content
+
+Escaped pipes and pipes inside inline code spans are content, not column separators; alignment must count them as cell text.
+
+| pattern   | note             |
+| --------- | ---------------- |
+| a\|b      | escaped pipe     |
+| `x|y`     | inline code pipe |
+| c         | plain            |
+
+## 9. A table between two code fences
+
+The fences around the table are code and must stay byte-identical while the table between them is aligned.
+
+```text
+| code | table |
+| ---- | ----- |
+```
+
+| data   | goes   | here   |
+| :----- | :----- | :----- |
+| one    | two    | three  |
+
+```text
+| more | code |
+```
+
+## 10. Blockquote table and a quoted fence
+
+The script supports `> ` blockquote prefixes: the quoted table below is alignable. The quoted fence after it is code and must not move.
+
+> | quoted   | table   |
+> | :------- | ------: |
+> | a        | 1       |
+
+> ```
+> | quote | code |
+> ```
+
+## 11. Final mixed section
+
+One last table followed by blockquotes, a list, a thematic break, a setext heading, an HTML comment and indented code — none of those may change.
+
+| last   | table   |
+| ------ | ------: |
+| x      | 1       |
+
+> A plain blockquote that must not be touched.
+
+- a list item
+- another list item
+
+---
+
+A setext heading
+================
+
+<!-- comment with | pipe -->
+
+    indented code with | pipe
+
+English closing paragraph: the file ends here with a table, prose, and untouched blocks all intact.
