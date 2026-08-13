@@ -453,7 +453,9 @@ export function pyIsSpace(s: string): boolean {
 // Table parsing
 // ---------------------------------------------------------------------------
 
-export const PREFIX_RE = /^(?<prefix> {0,3}(?:> ?)*)(?<body>.*)$/;
+// Python's `.` matches \r; JS's doesn't (it is a line terminator), so the
+// dotAll flag is required for parity on lines with interior \r.
+export const PREFIX_RE = /^(?<prefix> {0,3}(?:> ?)*)(?<body>.*)$/s;
 // Lines starting like this are block-level elements -> they end a table.
 // (`\s` from the Python regex is replaced by the shared whitespace class.)
 export const BLOCK_START_RE = new RegExp(
