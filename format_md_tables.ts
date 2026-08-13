@@ -12,7 +12,13 @@
 // Width iteration is code-point-driven (Array.from), never UTF-16-unit;
 // regex-driven slicing uses the original JS string with match indices.
 
+import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import * as path from "node:path";
+
 export const VERSION = "1.0.0";
+
+const BOM_BYTES = Buffer.from([0xef, 0xbb, 0xbf]);
+const BOM_TEXT = "\ufeff";
 
 // ---------------------------------------------------------------------------
 // Display width model
@@ -907,4 +913,223 @@ export function wrapCell(text: string, maxWidth: number): string[] {
     out.push(parts.join(""));
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Whole-text / file processing
+// ---------------------------------------------------------------------------
+
+function pad(frag: string, width: number): string {
+  return frag + " ".repeat(width - displayWidth(frag));
+}
+
+/** Render one logical row; returns one string per physical line. */
+function renderRow(
+  cells: string[][],
+  widths: number[],
+  lead: boolean,
+  trail: boolean,
+  _wrapWidth: number,
+  prefix: string,
+): string[] {
+  const fragsPerCell: string[][] = [];
+  let height = 1;
+  for (let j = 0; j < cells.length; j++) {
+    let frags = cells[j]!;
+    if (frags.length === 0) {
+      frags = [""];
+    } else if (j > 0) {
+      // Wrap every fragment that exceeds the column width, even inside
+      // multi-fragment (previously wrapped/merged) cells.  Column 0 is
+      // never wrapped (see renderTable).
+      const wrapped: string[] = [];
+      for (const frag of frags) {
+        if (displayWidth(frag) > widths[j]!) {
+          wrapped.push(...wrapCell(frag, widths[j]!));
+        } else {
+          wrapped.push(frag);
+        }
+      }
+      frags = wrapped;
+    }
+    fragsPerCell.push(frags);
+    height = Math.max(height, frags.length);
+  }
+  const parts: string[] = [];
+  for (let k = 0; k < height; k++) {
+    const rowParts: string[] = [];
+    for (let j = 0; j < fragsPerCell.length; j++) {
+      const frags = fragsPerCell[j]!;
+      const frag = k < frags.length ? frags[k]! : "";
+      rowParts.push(pad(frag, widths[j]!));
+    }
+    let body = rowParts.join(" | ");
+    if (lead) body = "| " + body;
+    if (trail) body += " |";
+    parts.push(prefix + body);
+  }
+  return parts;
+}
+
+function renderSep(
+  aligns: string[],
+  widths: number[],
+  lead: boolean,
+  trail: boolean,
+  prefix: string,
+): string {
+  const parts: string[] = [];
+  for (let j = 0; j < aligns.length; j++) {
+    const a = aligns[j]!;
+    const w = widths[j]!;
+    let cell: string;
+    if (a === "l") {
+      cell = ":" + "-".repeat(w - 1);
+    } else if (a === "r") {
+      cell = "-".repeat(w - 1) + ":";
+    } else if (a === "c") {
+      cell = ":" + "-".repeat(w - 2) + ":";
+    } else {
+      cell = "-".repeat(w);
+    }
+    parts.push(cell);
+  }
+  let body = parts.join(" | ");
+  if (lead) body = "| " + body;
+  if (trail) body += " |";
+  return prefix + body;
+}
+
+export function renderTable(t: Table): string[] {
+  // Column 0 never wraps, and single-column tables never wrap: a wrapped
+  // cell's continuation line would put content in the first cell, making it
+  // indistinguishable from a fresh row on re-parse (and in any GFM
+  // renderer), silently changing the row count.  Wrapping later columns
+  // always produces continuations with an empty first cell, which the
+  // merge logic recognises.
+  const wrap = t.ncols > 1 ? t.wrapWidth : 0;
+  const widths: number[] = [];
+  for (let j = 0; j < t.ncols; j++) {
+    let cw = 0;
+    for (const row of t.rows) {
+      cw = Math.max(cw, displayWidth(row.cells[j]!.join(" ")));
+    }
+    for (const cell of t.header) {
+      cw = Math.max(cw, displayWidth(cell.join(" ")));
+    }
+    if (j < t.sepCells.length) {
+      cw = Math.max(cw, displayWidth(t.sepCells[j]!));
+    }
+    if (wrap && j > 0) {
+      cw = Math.min(cw, wrap);
+    }
+    widths.push(Math.max(3, cw));
+  }
+  const out: string[] = [];
+  out.push(...renderRow(t.header, widths, t.lead, t.trail, t.wrapWidth, t.prefix));
+  out.push(renderSep(t.aligns, widths, t.lead, t.trail, t.prefix));
+  for (const row of t.rows) {
+    out.push(...renderRow(row.cells, widths, t.lead, t.trail, t.wrapWidth, t.prefix));
+  }
+  return out;
+}
+
+/** Align every table in `text`; returns {text: newText, changed}. */
+export function alignText(
+  text: string,
+  wrapWidth = 40,
+  tabWidth = 8,
+  warnings?: string[],
+): { text: string; changed: boolean } {
+  const wlist: string[] = warnings ?? [];
+  const bom = text.startsWith(BOM_TEXT);
+  if (bom) text = text.slice(1);
+  const crlf = (text.match(/\r\n/g) ?? []).length;
+  const lf = (text.match(/\n/g) ?? []).length - crlf;
+  const eol = crlf > lf ? "\r\n" : "\n";
+
+  const lines = text.split("\n").map((line) => line.replace(/\r+$/, ""));
+  const tables = findTables(lines, wrapWidth, tabWidth);
+  if (tables.length === 0) {
+    return { text: (bom ? BOM_TEXT : "") + text, changed: false };
+  }
+
+  const newLines = [...lines];
+  let offset = 0;
+  for (const [start, end, t] of tables) {
+    const rendered = renderTable(t);
+    newLines.splice(start + offset, end - start, ...rendered);
+    offset += rendered.length - (end - start);
+    if (t.warnings.length > 0) {
+      wlist.push(
+        `format_md_tables: table at line ${start + 1}: ${t.warnings.join("; ")}`);
+    }
+  }
+  let out = newLines.join(eol);
+  if (bom) out = BOM_TEXT + out;
+  return { text: out, changed: out !== text };
+}
+
+function readFile(p: string): Buffer {
+  return readFileSync(p);
+}
+
+/** Write `data` to `path` atomically (temp file + rename). */
+function writeFile(p: string, data: Buffer): void {
+  const dirname = path.dirname(path.resolve(p)) || ".";
+  const tmp = path.join(
+    dirname,
+    ".fmt_md_tables-" + Math.random().toString(36).slice(2) + ".tmp",
+  );
+  try {
+    writeFileSync(tmp, data);
+    renameSync(tmp, p);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // already gone
+    }
+    throw e;
+  }
+}
+
+/**
+ * Align the bytes of a file, preserving BOM and dominant line ending.
+ * Throws Error("not valid UTF-8") on invalid input.
+ */
+export function alignBytes(
+  raw: Buffer,
+  wrapWidth: number,
+  tabWidth: number,
+  warnings?: string[],
+): { data: Buffer; changed: boolean } {
+  const hadBom = raw.subarray(0, 3).equals(BOM_BYTES);
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(
+      hadBom ? raw.subarray(3) : raw,
+    );
+  } catch {
+    throw new Error("not valid UTF-8");
+  }
+  const { text: newText, changed } = alignText(text, wrapWidth, tabWidth, warnings);
+  let data = Buffer.from(newText, "utf-8");
+  if (hadBom && !data.subarray(0, 3).equals(BOM_BYTES)) {
+    data = Buffer.concat([BOM_BYTES, data]);
+  }
+  return { data, changed };
+}
+
+/** Align a file in place; returns whether it changed. */
+export function alignFile(
+  p: string,
+  wrapWidth: number,
+  tabWidth: number,
+  warnings?: string[],
+): boolean {
+  const raw = readFile(p);
+  const { data, changed } = alignBytes(raw, wrapWidth, tabWidth, warnings);
+  if (changed) writeFile(p, data);
+  return changed;
 }

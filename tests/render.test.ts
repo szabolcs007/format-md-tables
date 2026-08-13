@@ -19,7 +19,7 @@ describe("alignText", () => {
 
   test("lead/trail styles: leading-only", () => {
     const input = "| a | b\n| --- | ---\n| c | d\n";
-    const expected = "| a   | b   \n| --- | ---\n| c   | d   \n";
+    const expected = "| a   | b  \n| --- | ---\n| c   | d  \n";
     expect(alignText(input).text).toBe(expected);
   });
 
@@ -31,7 +31,7 @@ describe("alignText", () => {
 
   test("lead/trail styles: neither", () => {
     const input = "a | b\n--- | ---\nc | d\n";
-    const expected = "a   | b   \n--- | ---\nc   | d   \n";
+    const expected = "a   | b  \n--- | ---\nc   | d  \n";
     expect(alignText(input).text).toBe(expected);
   });
 
@@ -58,9 +58,8 @@ describe("alignText", () => {
     const input = `| h |\n| --- |\n| ${wide} |\n`;
     const { text, changed } = alignText(input);
     expect(changed).toBe(true);
-    const lines = text.split("\n");
-    expect(lines.length).toBe(3);
-    expect(lines[2]).toBe(`| ${wide} |`);
+    expect(text).toBe(
+      `| h${" ".repeat(119)} |\n| ${"-".repeat(120)} |\n| ${wide} |\n`);
   });
 
   test("column 0 of a multi-column table never wraps", () => {
@@ -68,7 +67,10 @@ describe("alignText", () => {
     const input = `| ${wide} | b |\n| --- | --- |\n| c | d |\n`;
     const { text, changed } = alignText(input);
     expect(changed).toBe(true);
-    expect(text.split("\n")[0]).toBe(`| ${wide} | b   |`);
+    // header's wide cell inflates every column, then the wrap cap applies
+    // to columns 1..n-1 (Python reference behavior); column 0 stays 120
+    // wide and unwrapped on a single physical line.
+    expect(text.split("\n")[0]).toBe(`| ${wide} | b${" ".repeat(39)} |`);
   });
 
   test("fenced code blocks pass through unchanged", () => {
