@@ -12,7 +12,7 @@
 // Width iteration is code-point-driven (Array.from), never UTF-16-unit;
 // regex-driven slicing uses the original JS string with match indices.
 
-import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import * as path from "node:path";
 
 export const VERSION = "1.0.0";
@@ -1132,4 +1132,506 @@ export function alignFile(
   const { data, changed } = alignBytes(raw, wrapWidth, tabWidth, warnings);
   if (changed) writeFile(p, data);
   return changed;
+}
+
+// ---------------------------------------------------------------------------
+// Unified diff (faithful port of CPython 3.14.4 difflib)
+// ---------------------------------------------------------------------------
+
+type Opcode = ["equal" | "replace" | "delete" | "insert", number, number, number, number];
+
+/**
+ * SequenceMatcher port (CPython 3.14.4 difflib.SequenceMatcher) with
+ * autojunk=True semantics: elements appearing more than n//100+1 times in a
+ * sequence of length n >= 200 are "popular" and excluded from b2j.
+ */
+class SequenceMatcher {
+  a: string[];
+  b: string[];
+  private b2j = new Map<string, number[]>();
+  private bjunk = new Set<string>();
+  private matchingBlocks: Array<[number, number, number]> | null = null;
+  private opcodes: Opcode[] | null = null;
+
+  constructor(a: string[], b: string[]) {
+    this.a = a;
+    this.b = b;
+    this.chainB();
+  }
+
+  private chainB(): void {
+    const b = this.b;
+    const b2j = new Map<string, number[]>();
+    for (let i = 0; i < b.length; i++) {
+      const elt = b[i]!;
+      const indices = b2j.get(elt);
+      if (indices === undefined) b2j.set(elt, [i]);
+      else indices.push(i);
+    }
+    // No isjunk in this port; the junk sets stay empty.
+    // Purge popular elements that are not junk.
+    const n = b.length;
+    if (n >= 200) {
+      const ntest = Math.floor(n / 100) + 1;
+      for (const [elt, idxs] of b2j) {
+        if (idxs.length > ntest) this.bjunk.add(elt);
+      }
+      for (const elt of this.bjunk) b2j.delete(elt);
+    }
+    this.b2j = b2j;
+  }
+
+  private findLongestMatch(
+    alo: number,
+    ahi: number,
+    blo: number,
+    bhi: number,
+  ): [number, number, number] {
+    const { a, b, b2j } = this;
+    let besti = alo;
+    let bestj = blo;
+    let bestsize = 0;
+    // j2len[j] = length of longest junk-free match ending with a[i-1], b[j]
+    let j2len = new Map<number, number>();
+    for (let i = alo; i < ahi; i++) {
+      const newj2len = new Map<number, number>();
+      const indices = b2j.get(a[i]!);
+      if (indices !== undefined) {
+        for (const j of indices) {
+          if (j < blo) continue;
+          if (j >= bhi) break;
+          const k = (j2len.get(j - 1) ?? 0) + 1;
+          newj2len.set(j, k);
+          if (k > bestsize) {
+            besti = i - k + 1;
+            bestj = j - k + 1;
+            bestsize = k;
+          }
+        }
+      }
+      j2len = newj2len;
+    }
+    // Extend the best by non-junk elements on each end.  (bjunk is empty
+    // here, so these loops only extend over plain matches; ported for
+    // fidelity with the Python structure.)
+    while (besti > alo && bestj > blo && !this.bjunk.has(b[bestj - 1]!) &&
+        a[besti - 1] === b[bestj - 1]) {
+      besti--;
+      bestj--;
+      bestsize++;
+    }
+    while (besti + bestsize < ahi && bestj + bestsize < bhi &&
+        !this.bjunk.has(b[bestj + bestsize]!) &&
+        a[besti + bestsize] === b[bestj + bestsize]) {
+      bestsize++;
+    }
+    // Suck up matching junk on each side (no-op with an empty bjunk).
+    while (besti > alo && bestj > blo && this.bjunk.has(b[bestj - 1]!) &&
+        a[besti - 1] === b[bestj - 1]) {
+      besti--;
+      bestj--;
+      bestsize++;
+    }
+    while (besti + bestsize < ahi && bestj + bestsize < bhi &&
+        this.bjunk.has(b[bestj + bestsize]!) &&
+        a[besti + bestsize] === b[bestj + bestsize]) {
+      bestsize++;
+    }
+    return [besti, bestj, bestsize];
+  }
+
+  getMatchingBlocks(): Array<[number, number, number]> {
+    if (this.matchingBlocks !== null) return this.matchingBlocks;
+    const la = this.a.length;
+    const lb = this.b.length;
+    const queue: Array<[number, number, number, number]> = [[0, la, 0, lb]];
+    const matchingBlocks: Array<[number, number, number]> = [];
+    while (queue.length > 0) {
+      const [alo, ahi, blo, bhi] = queue.pop()!;
+      const [i, j, k] = this.findLongestMatch(alo, ahi, blo, bhi);
+      if (k) {
+        matchingBlocks.push([i, j, k]);
+        if (alo < i && blo < j) queue.push([alo, i, blo, j]);
+        if (i + k < ahi && j + k < bhi) queue.push([i + k, ahi, j + k, bhi]);
+      }
+    }
+    matchingBlocks.sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2]);
+    // Collapse adjacent equal blocks.
+    let i1 = 0;
+    let j1 = 0;
+    let k1 = 0;
+    const nonAdjacent: Array<[number, number, number]> = [];
+    for (const [i2, j2, k2] of matchingBlocks) {
+      if (i1 + k1 === i2 && j1 + k1 === j2) {
+        k1 += k2;
+      } else {
+        if (k1) nonAdjacent.push([i1, j1, k1]);
+        i1 = i2;
+        j1 = j2;
+        k1 = k2;
+      }
+    }
+    if (k1) nonAdjacent.push([i1, j1, k1]);
+    nonAdjacent.push([la, lb, 0]);
+    this.matchingBlocks = nonAdjacent;
+    return nonAdjacent;
+  }
+
+  getOpcodes(): Opcode[] {
+    if (this.opcodes !== null) return this.opcodes;
+    let i = 0;
+    let j = 0;
+    const answer: Opcode[] = [];
+    for (const [ai, bj, size] of this.getMatchingBlocks()) {
+      let tag: Opcode[0] | "" = "";
+      if (i < ai && j < bj) tag = "replace";
+      else if (i < ai) tag = "delete";
+      else if (j < bj) tag = "insert";
+      if (tag) answer.push([tag, i, ai, j, bj]);
+      i = ai + size;
+      j = bj + size;
+      if (size) answer.push(["equal", ai, i, bj, j]);
+    }
+    this.opcodes = answer;
+    return answer;
+  }
+
+  getGroupedOpcodes(n = 3): Opcode[][] {
+    let codes = this.getOpcodes();
+    if (codes.length === 0) codes = [["equal", 0, 1, 0, 1]];
+    // Fixup leading and trailing groups if they show no changes.
+    if (codes[0]![0] === "equal") {
+      const [tag, i1, i2, j1, j2] = codes[0]!;
+      codes[0] = [tag, Math.max(i1, i2 - n), i2, Math.max(j1, j2 - n), j2];
+    }
+    if (codes[codes.length - 1]![0] === "equal") {
+      const [tag, i1, i2, j1, j2] = codes[codes.length - 1]!;
+      codes[codes.length - 1] = [tag, i1, Math.min(i2, i1 + n), j1, Math.min(j2, j1 + n)];
+    }
+    const nn = n + n;
+    const groups: Opcode[][] = [];
+    let group: Opcode[] = [];
+    for (let [tag, i1, i2, j1, j2] of codes) {
+      if (tag === "equal" && i2 - i1 > nn) {
+        group.push([tag, i1, Math.min(i2, i1 + n), j1, Math.min(j2, j1 + n)]);
+        groups.push(group);
+        group = [];
+        i1 = Math.max(i1, i2 - n);
+        j1 = Math.max(j1, j2 - n);
+      }
+      group.push([tag, i1, i2, j1, j2]);
+    }
+    if (group.length > 0 && !(group.length === 1 && group[0]![0] === "equal")) {
+      groups.push(group);
+    }
+    return groups;
+  }
+}
+
+/** Python str.splitlines(keepends=True). */
+function splitlinesKeepends(s: string): string[] {
+  const result: string[] = [];
+  const breaks = ["\r\n", "\r", "\n", "\v", "\f", "\u001c", "\u001d", "\u001e", "\u0085", "\u2028", "\u2029"];
+  let start = 0;
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    let found: string | null = null;
+    for (const b of breaks) {
+      if (s.startsWith(b, i)) {
+        found = b;
+        break;
+      }
+    }
+    if (found === null) {
+      i++;
+      continue;
+    }
+    result.push(s.slice(start, i + found.length));
+    i += found.length;
+    start = i;
+  }
+  if (start < n) result.push(s.slice(start));
+  return result;
+}
+
+function formatRangeUnified(start: number, stop: number): string {
+  // Per the diff spec: lines start numbering with one.
+  const beginning = start + 1;
+  const length = stop - start;
+  if (length === 1) return `${beginning}`;
+  if (length === 0) return `${beginning - 1},0`; // empty ranges begin just before
+  return `${beginning},${length}`;
+}
+
+/**
+ * Unified diff over lines that KEEP their line endings (splitlines
+ * keepends semantics), matching difflib.unified_diff(..., lineterm=""):
+ * control lines (---, +++, @@) carry no trailing newline; body lines
+ * carry their own.
+ */
+export function unifiedDiff(
+  aLines: string[],
+  bLines: string[],
+  fromfile: string,
+  tofile: string,
+): string {
+  let out = "";
+  let started = false;
+  for (const group of new SequenceMatcher(aLines, bLines).getGroupedOpcodes(3)) {
+    if (!started) {
+      started = true;
+      out += `--- ${fromfile}`;
+      out += `+++ ${tofile}`;
+    }
+    const first = group[0]!;
+    const last = group[group.length - 1]!;
+    const file1Range = formatRangeUnified(first[1], last[2]);
+    const file2Range = formatRangeUnified(first[3], last[4]);
+    out += `@@ -${file1Range} +${file2Range} @@`;
+    for (const [tag, i1, i2, j1, j2] of group) {
+      if (tag === "equal") {
+        for (let i = i1; i < i2; i++) out += " " + aLines[i];
+        continue;
+      }
+      if (tag === "replace" || tag === "delete") {
+        for (let i = i1; i < i2; i++) out += "-" + aLines[i];
+      }
+      if (tag === "replace" || tag === "insert") {
+        for (let j = j1; j < j2; j++) out += "+" + bLines[j];
+      }
+    }
+  }
+  return out;
+}
+
+/** Python `_diff`: unified diff with lineterm="". */
+function diffText(old: string, newText: string, p: string): string {
+  return unifiedDiff(
+    splitlinesKeepends(old),
+    splitlinesKeepends(newText),
+    p,
+    p + " (aligned)",
+  );
+}
+
+/** decode("utf-8-sig", "replace"): strip one BOM, replace invalid bytes. */
+function decodeReplace(raw: Buffer): string {
+  const b = raw.subarray(0, 3).equals(BOM_BYTES) ? raw.subarray(3) : raw;
+  return new TextDecoder("utf-8").decode(b);
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+const USAGE = `usage: format_md_tables [-h] [--max-width N] [--tab-width N] [--check]
+                       [--diff] [--version] [FILE ...]
+
+Realign the vertical borders of markdown tables so every | lines up exactly
+in a monospace renderer, accounting for wide characters, emoji, combining
+marks and ANSI codes, and wrapping over-wide cells at word boundaries.
+
+positional arguments:
+  FILE               markdown files to align in place
+
+options:
+  -h, --help         show this help message and exit
+  --max-width N      wrap columns wider than N display columns (default 40;
+                     0 disables wrapping)
+  --tab-width N      tab stop used when expanding tabs inside cells
+                     (default 8)
+  --check            do not modify files; exit 1 if any would change
+  --diff             print a unified diff to stderr and do not modify
+  --version          print version and exit
+
+With no file arguments the input is read from stdin and the aligned result
+is written to stdout.
+`;
+
+function usageError(msg: string): number {
+  fsWriteStderr(USAGE + `format_md_tables: error: ${msg}\n`);
+  return 2;
+}
+
+function fsWriteStdout(data: Buffer): void {
+  writeSync(1, data);
+}
+
+// Python's text-mode sys.stdout/sys.stderr translate every \n to os.linesep
+// on Windows.  Replicating that observable behavior keeps the differential
+// gate byte-exact on the dev machine; on POSIX this is the identity.
+function pyNewlines(s: string): string {
+  return process.platform === "win32" ? s.replace(/\n/g, "\r\n") : s;
+}
+
+function writeText(fd: number, text: string): void {
+  writeSync(fd, Buffer.from(pyNewlines(text), "utf-8"));
+}
+
+function fsWriteStderr(text: string): void {
+  writeText(2, text);
+}
+
+/** Parse CLI arguments (argparse-shaped). Returns {args} or {error: code}. */
+function parseArgs(argv: string[]):
+  | {
+      files: string[];
+      maxWidth: number;
+      tabWidth: number;
+      check: boolean;
+      diff: boolean;
+    }
+  | { error: number } {
+  const files: string[] = [];
+  let maxWidth = 40;
+  let tabWidth = 8;
+  let check = false;
+  let diff = false;
+  let i = 0;
+  let noMoreOptions = false;
+  const INT_RE = /^[+-]?\d+$/;
+  while (i < argv.length) {
+    const arg = argv[i]!;
+    if (noMoreOptions || arg === "-" || !arg.startsWith("-")) {
+      files.push(arg);
+      i += 1;
+      continue;
+    }
+    if (arg === "--") {
+      noMoreOptions = true;
+      i += 1;
+      continue;
+    }
+    if (arg === "-h" || arg === "--help") {
+      writeText(1, USAGE);
+      return { error: 0 };
+    }
+    if (arg === "--version") {
+      writeText(1, `format_md_tables ${VERSION}\n`);
+      return { error: 0 };
+    }
+    if (arg === "--check") {
+      check = true;
+      i += 1;
+      continue;
+    }
+    if (arg === "--diff") {
+      diff = true;
+      i += 1;
+      continue;
+    }
+    const equals = arg.startsWith("--max-width=") || arg.startsWith("--tab-width=");
+    const name = equals ? arg.slice(0, arg.indexOf("=")) : arg;
+    if (name === "--max-width" || name === "--tab-width") {
+      let value: string;
+      if (equals) {
+        value = arg.slice(arg.indexOf("=") + 1);
+        i += 1;
+      } else {
+        if (i + 1 >= argv.length) {
+          return { error: usageError(`argument ${name}: expected one argument`) };
+        }
+        value = argv[i + 1]!;
+        i += 2;
+      }
+      if (!INT_RE.test(value)) {
+        return { error: usageError(`argument ${name}: invalid int value: '${value}'`) };
+      }
+      const num = parseInt(value, 10);
+      if (name === "--max-width") maxWidth = num;
+      else tabWidth = num;
+      continue;
+    }
+    return { error: usageError(`unrecognized arguments: ${arg}`) };
+  }
+  return { files, maxWidth, tabWidth, check, diff };
+}
+
+export function main(argv: string[]): number {
+  const parsed = parseArgs(argv);
+  if ("error" in parsed) return parsed.error;
+  const { files, maxWidth, tabWidth, check, diff } = parsed;
+
+  if (maxWidth < 0) return usageError("--max-width must be >= 0");
+  if (tabWidth < 1) return usageError("--tab-width must be >= 1");
+
+  const warnings: string[] = [];
+  let changedAny = false;
+  let errors = 0;
+
+  if (files.length === 0) {
+    let raw: Buffer;
+    try {
+      raw = readFileSync(0);
+    } catch {
+      raw = Buffer.alloc(0);
+    }
+    let data: Buffer;
+    let changed: boolean;
+    try {
+      ({ data, changed } = alignBytes(raw, maxWidth, tabWidth, warnings));
+    } catch (e) {
+      fsWriteStderr(`format_md_tables: stdin: ${(e as Error).message}\n`);
+      return 2;
+    }
+    if (diff) {
+      fsWriteStderr(diffText(decodeReplace(raw), decodeReplace(data), "<stdin>"));
+    }
+    if (!(check || diff)) {
+      fsWriteStdout(data);
+    }
+    if (changed) {
+      changedAny = true;
+      if (check && !diff) {
+        fsWriteStderr("format_md_tables: <stdin> would be reformatted\n");
+      }
+    }
+  } else {
+    for (const p of files) {
+      let raw: Buffer;
+      try {
+        raw = readFile(p);
+      } catch (e) {
+        fsWriteStderr(`format_md_tables: ${p}: ${(e as Error).message}\n`);
+        errors += 1;
+        continue;
+      }
+      let data: Buffer;
+      let changed: boolean;
+      try {
+        ({ data, changed } = alignBytes(raw, maxWidth, tabWidth, warnings));
+      } catch (e) {
+        fsWriteStderr(`format_md_tables: ${p}: ${(e as Error).message}\n`);
+        errors += 1;
+        continue;
+      }
+      if (changed) {
+        changedAny = true;
+        if (diff) {
+          fsWriteStderr(diffText(decodeReplace(raw), decodeReplace(data), p));
+        } else if (check) {
+          fsWriteStderr(`format_md_tables: ${p} would be reformatted\n`);
+        } else {
+          try {
+            writeFile(p, data);
+          } catch (e) {
+            fsWriteStderr(`format_md_tables: ${p}: ${(e as Error).message}\n`);
+            errors += 1;
+          }
+        }
+      }
+    }
+  }
+
+  for (const w of warnings) {
+    fsWriteStderr(w + "\n");
+  }
+  if (errors > 0) return 2;
+  if (changedAny && (check || diff)) return 1;
+  return 0;
+}
+
+if (import.meta.main) {
+  process.exit(main(process.argv.slice(2)));
 }
