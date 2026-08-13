@@ -235,6 +235,15 @@ function categoryOf(cp: number): string {
   return "Lo"; // any other category takes the base-character path
 }
 
+/**
+ * The seven categories the Python width loop treats as zero-width in the
+ * ZWJ-standalone and modifier-cluster branches (Mn/Mc/Me/Cf/Cc/Zl/Zp).
+ */
+function isZeroWidthCat(cat: string): boolean {
+  return cat === "Mn" || cat === "Mc" || cat === "Me" ||
+    cat === "Cf" || cat === "Cc" || cat === "Zl" || cat === "Zp";
+}
+
 function isEmojiBase(cp: number): boolean {
   return (0x1F000 <= cp && cp <= 0x1FAFF) || inRanges(cp, EMOJI_PRESENTATION);
 }
@@ -287,8 +296,7 @@ export function displayWidth(text: string, tabWidth = 8): number {
           if (isEmojiBase(nxt)) {
             width += 2;
             i = j + 1;
-          } else if (nxtCat === "Mn" || nxtCat === "Mc" || nxtCat === "Me" ||
-              nxtCat === "Cf" || nxtCat === "Cc" || nxtCat === "Zl" || nxtCat === "Zp") {
+          } else if (isZeroWidthCat(nxtCat)) {
             i += 1;
           } else {
             width += charBaseWidth(nxt);
@@ -349,8 +357,7 @@ export function displayWidth(text: string, tabWidth = 8): number {
           } else if (j < n) {
             const nxt = chars[j]!.codePointAt(0)!;
             const nxtCat = categoryOf(nxt);
-            if (nxtCat !== "Mn" && nxtCat !== "Mc" && nxtCat !== "Me" &&
-                nxtCat !== "Cf" && nxtCat !== "Cc" && nxtCat !== "Zl" && nxtCat !== "Zp") {
+            if (!isZeroWidthCat(nxtCat)) {
               extra += charBaseWidth(nxt);
             }
             j += 1;
@@ -1072,10 +1079,6 @@ export function alignText(
   return { text: out, changed: out !== text };
 }
 
-function readFile(p: string): Buffer {
-  return readFileSync(p);
-}
-
 /** Write `data` to `path` atomically (temp file + rename). */
 function writeFile(p: string, data: Buffer): void {
   const dirname = path.dirname(path.resolve(p)) || ".";
@@ -1130,7 +1133,7 @@ export function alignFile(
   tabWidth: number,
   warnings?: string[],
 ): boolean {
-  const raw = readFile(p);
+  const raw = readFileSync(p);
   const { data, changed } = alignBytes(raw, wrapWidth, tabWidth, warnings);
   if (changed) writeFile(p, data);
   return changed;
@@ -1475,6 +1478,17 @@ function fsWriteStderr(text: string): void {
   writeText(2, text);
 }
 
+/** Option table mirroring argparse's long options; names are prefix-unique. */
+const OPTIONS: Record<string, { takesValue: boolean }> = {
+  "--max-width": { takesValue: true },
+  "--tab-width": { takesValue: true },
+  "--check": { takesValue: false },
+  "--diff": { takesValue: false },
+  "--version": { takesValue: false },
+  "--help": { takesValue: false },
+};
+const OPTION_NAMES = Object.keys(OPTIONS);
+
 /** Parse CLI arguments (argparse-shaped). Returns {args} or {error: code}. */
 function parseArgs(argv: string[]):
   | {
@@ -1505,47 +1519,71 @@ function parseArgs(argv: string[]):
       i += 1;
       continue;
     }
-    if (arg === "-h" || arg === "--help") {
-      writeText(1, USAGE);
-      return { error: 0 };
-    }
-    if (arg === "--version") {
-      writeText(1, `format_md_tables ${VERSION}\n`);
-      return { error: 0 };
-    }
-    if (arg === "--check") {
-      check = true;
+    if (/^-\d+$|^-\d*\.\d+$/.test(arg)) {
+      // argparse treats negative numbers as positionals
+      files.push(arg);
       i += 1;
       continue;
     }
-    if (arg === "--diff") {
-      diff = true;
-      i += 1;
-      continue;
-    }
-    const equals = arg.startsWith("--max-width=") || arg.startsWith("--tab-width=");
-    const name = equals ? arg.slice(0, arg.indexOf("=")) : arg;
-    if (name === "--max-width" || name === "--tab-width") {
-      let value: string;
-      if (equals) {
-        value = arg.slice(arg.indexOf("=") + 1);
-        i += 1;
+    const eq = arg.indexOf("=");
+    const name = eq === -1 ? arg : arg.slice(0, eq);
+    const explicitArg = eq === -1 ? null : arg.slice(eq + 1);
+
+    // Exact match first, then argparse allow_abbrev: an unambiguous prefix
+    // of a long option is accepted, including single-dash long forms.
+    let opt: string | null = OPTIONS[name] !== undefined ? name : null;
+    if (opt === null) {
+      const prefix = name.replace(/^-+/, "");
+      const matches = OPTION_NAMES.filter((n) => n.slice(2).startsWith(prefix));
+      if (matches.length === 1) {
+        opt = matches[0]!;
+      } else if (matches.length > 1) {
+        return {
+          error: usageError(
+            `ambiguous option: ${name} could match ${matches.join(", ")}`),
+        };
       } else {
-        if (i + 1 >= argv.length) {
-          return { error: usageError(`argument ${name}: expected one argument`) };
-        }
-        value = argv[i + 1]!;
-        i += 2;
+        return { error: usageError(`unrecognized arguments: ${arg}`) };
       }
-      if (!INT_RE.test(value)) {
-        return { error: usageError(`argument ${name}: invalid int value: '${value}'`) };
+    }
+
+    if (!OPTIONS[opt]!.takesValue) {
+      if (explicitArg !== null) {
+        return {
+          error: usageError(`argument ${opt}: ignored explicit argument '${explicitArg}'`),
+        };
       }
-      const num = parseInt(value, 10);
-      if (name === "--max-width") maxWidth = num;
-      else tabWidth = num;
+      if (opt === "--help") {
+        writeText(1, USAGE);
+        return { error: 0 };
+      }
+      if (opt === "--version") {
+        writeText(1, `format_md_tables ${VERSION}\n`);
+        return { error: 0 };
+      }
+      if (opt === "--check") check = true;
+      else diff = true;
+      i += 1;
       continue;
     }
-    return { error: usageError(`unrecognized arguments: ${arg}`) };
+
+    let value: string;
+    if (explicitArg !== null) {
+      value = explicitArg;
+      i += 1;
+    } else {
+      if (i + 1 >= argv.length) {
+        return { error: usageError(`argument ${opt}: expected one argument`) };
+      }
+      value = argv[i + 1]!;
+      i += 2;
+    }
+    if (!INT_RE.test(value)) {
+      return { error: usageError(`argument ${opt}: invalid int value: '${value}'`) };
+    }
+    const num = parseInt(value, 10);
+    if (opt === "--max-width") maxWidth = num;
+    else tabWidth = num;
   }
   return { files, maxWidth, tabWidth, check, diff };
 }
@@ -1593,7 +1631,7 @@ export function main(argv: string[]): number {
     for (const p of files) {
       let raw: Buffer;
       try {
-        raw = readFile(p);
+        raw = readFileSync(p);
       } catch (e) {
         fsWriteStderr(`format_md_tables: ${p}: ${(e as Error).message}\n`);
         errors += 1;
